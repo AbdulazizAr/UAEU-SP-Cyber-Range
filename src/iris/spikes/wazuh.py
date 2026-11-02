@@ -30,6 +30,7 @@ from iris.spikes.common import (
     mem_mib,
     new_run_dir,
     require_docker,
+    sh,
     spike_file,
     wait_until,
     write_result,
@@ -118,11 +119,49 @@ def _env(clock: EpisodeClock | None) -> dict[str, str]:
     return {"FAKETIME": clock.faketime_spec(), "IRIS_LD_PRELOAD": LIBFAKETIME}
 
 
+#: Daemons generation mode needs. Others (clusterd, maild, agentlessd, integratord, dbd,
+#: csyslogd) are disabled by default and always report "not running".
+REQUIRED_DAEMONS = (
+    "wazuh-analysisd",
+    "wazuh-remoted",
+    "wazuh-authd",
+    "wazuh-db",
+    "wazuh-monitord",
+    "wazuh-modulesd",
+)
+
+
+def manager_ready_from(status_text: str) -> tuple[bool, list[str]]:
+    """Ready when every required daemon reports running. Returns (ready, missing)."""
+    running = {line.split()[0] for line in status_text.splitlines() if " is running" in line and line.split()}
+    missing = [d for d in REQUIRED_DAEMONS if d not in running]
+    return not missing, missing
+
+
+def _logs(container: str) -> str:
+    cp = sh(["docker", "logs", "--tail", "60", container], check=False)
+    return (cp.stdout or "") + (cp.stderr or "")
+
+
 def _manager_ready() -> bool:
-    running, down = parse_control_status(
-        docker_exec(MANAGER, "/var/ossec/bin/wazuh-control status", check=False)
+    ok, _ = manager_ready_from(docker_exec(MANAGER, "/var/ossec/bin/wazuh-control status", check=False))
+    return ok
+
+
+def _diagnose(result: SpikeResult, label: str) -> None:
+    """On a failed start, keep what is needed to see why (status, container log, ossec.log)."""
+    status = docker_exec(MANAGER, "/var/ossec/bin/wazuh-control status", check=False)
+    _, missing = manager_ready_from(status)
+    result.measure(f"{label}.missing_daemons", missing)
+    result.measure(f"{label}.control_status", status.strip().splitlines()[-20:])
+    result.measure(
+        f"{label}.container_log_tail",
+        _logs(MANAGER).splitlines()[-60:],
     )
-    return running >= 5 and not down
+    result.measure(
+        f"{label}.ossec_errors",
+        error_lines(docker_exec(MANAGER, "tail -n 400 /var/ossec/logs/ossec.log", check=False))[-30:],
+    )
 
 
 def _agents() -> dict[str, tuple[str, str]]:
@@ -155,10 +194,11 @@ def _episode(
     t_up = time.monotonic()
     compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "manager"], env=_env(clock))
     ok, secs = wait_until(_manager_ready, timeout=240)
-    result.check(f"{label}.manager_ready", ok, secs, "all wazuh daemons running")
+    result.check(f"{label}.manager_ready", ok, secs, "required wazuh daemons running")
     result.measure(f"{label}.manager_ready_s", secs)
     if not ok:
-        raise SpikeError(f"{label}: manager did not come up")
+        _diagnose(result, label)
+        raise SpikeError(f"{label}: manager did not come up (diagnostics in results.json)")
 
     t_agents = time.monotonic()
     compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "agent1", "agent2"], env=_env(clock))

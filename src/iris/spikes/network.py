@@ -52,10 +52,10 @@ VIRTUAL_START = datetime(2025, 3, 10, 6, 0, tzinfo=UTC)
 
 NFT_RULES = [
     "add table inet iris",
-    "add chain inet iris fwd { type filter hook forward priority 0 ; policy drop ; }",
-    "add rule inet iris fwd ct state established,related accept",
-    "add rule inet iris fwd ip saddr 10.99.1.0/24 ip daddr 10.99.2.0/24 tcp dport 8080 accept",
-    "add rule inet iris fwd icmp type echo-request accept",
+    "add chain inet iris forward_filter { type filter hook forward priority 0 ; policy drop ; }",
+    "add rule inet iris forward_filter ct state established,related accept",
+    "add rule inet iris forward_filter ip saddr 10.99.1.0/24 ip daddr 10.99.2.0/24 tcp dport 8080 accept",
+    "add rule inet iris forward_filter icmp type echo-request accept",
 ]
 
 _ADDR = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/")

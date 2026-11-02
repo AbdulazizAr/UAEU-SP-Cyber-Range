@@ -143,3 +143,26 @@ def test_spike_compose_files_parse():
         assert "services" in data
     wazuh = yaml.safe_load((ROOT / "spikes" / "wazuh.compose.yml").read_text())
     assert wazuh["services"]["agent1"]["environment"]["FAKETIME_DONT_FAKE_MONOTONIC"] == "1"
+
+
+def test_manager_ready_ignores_disabled_daemons():
+    from iris.spikes.wazuh import manager_ready_from
+
+    up = "\n".join(
+        f"{d} is running..."
+        for d in ("wazuh-apid", "wazuh-modulesd", "wazuh-monitord", "wazuh-logcollector", "wazuh-remoted",
+                  "wazuh-syscheckd", "wazuh-analysisd", "wazuh-execd", "wazuh-db", "wazuh-authd")
+    )  # fmt: skip
+    off = "wazuh-clusterd not running...\nwazuh-maild not running...\nwazuh-integratord not running...\n"
+    assert manager_ready_from(off + up) == (True, [])
+    ok, missing = manager_ready_from(
+        off + up.replace("wazuh-remoted is running", "wazuh-remoted not running")
+    )
+    assert not ok and missing == ["wazuh-remoted"]
+
+
+def test_nft_rules_avoid_reserved_words():
+    from iris.spikes.network import NFT_RULES
+
+    for rule in NFT_RULES:
+        assert " fwd " not in f" {rule} "  # 'fwd' is an nftables keyword (netdev forwarding)
