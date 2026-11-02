@@ -1,0 +1,154 @@
+# Service recipes v0 (INPUT Part 1, 3.1). Versions are candidates; the P2 build matrix
+# blacklists any (recipe, version) that fails to build, and kind-A CVEs come from the
+# real versions installed. Images are built from images/recipes/<recipe>/ (P2 build step).
+catalog_version: "0.2.0"
+
+recipes:
+  nginx:
+    category: web
+    packages: [nginx, nginx-common, nginx-core, libnginx-mod-*]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [web_server, reverse_proxy]
+    versions: [1.22.1, 1.24.0, 1.26.2]
+    port: 443
+    plain_port: 80
+    protocol: tcp
+    tls_capable: true
+    auth_required: false
+    data_class: public
+  flask_shop:
+    category: application
+    packages: [flask, werkzeug, jinja2, gunicorn, psycopg*, sqlalchemy]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [app_server]
+    versions: [0.3.0]
+    port: 8000
+    protocol: tcp
+    auth_required: true
+    data_class: confidential
+  postgresql:
+    category: database
+    packages: [postgresql, postgresql-1*, postgresql-common, postgresql-server, libpq5, libpq]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [database]
+    versions: ["13.16", "15.6", "16.4"]
+    port: 5432
+    protocol: tcp
+    auth_required: true
+    data_class: confidential
+  unbound:
+    category: dns
+    packages: [unbound, libunbound*]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [dns_server]
+    versions: [1.17.1, 1.19.2]
+    port: 53
+    protocol: udp
+    auth_required: false
+    data_class: internal
+  openldap:
+    category: directory
+    packages: [slapd, libldap*, openldap, openldap-servers]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [directory]
+    versions: [2.5.13, 2.6.7]
+    port: 389
+    tls_port: 636
+    protocol: tcp
+    tls_capable: true
+    auth_required: true
+    data_class: confidential
+  kerberos:
+    category: directory
+    packages: [krb5-kdc, krb5-admin-server, krb5-server, libkrb5*, krb5-libs]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [directory]
+    versions: ["1.20.1"]
+    port: 88
+    protocol: udp
+    auth_required: true
+    data_class: confidential
+  samba:
+    category: file
+    packages: [samba, samba-common*, samba-libs, libsmbclient*]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [file_server]
+    versions: [4.17.12, 4.19.5]
+    port: 445
+    protocol: tcp
+    auth_required: true
+    data_class: confidential
+  postfix:
+    category: mail
+    packages: [postfix]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [mail_server]
+    versions: [3.7.11, 3.8.6]
+    port: 25
+    protocol: tcp
+    auth_required: false
+    data_class: internal
+  openssh:
+    category: remote_access
+    packages: [openssh-server, openssh-client, openssh-sftp-server, openssh, openssh-clients]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [app_server, database, file_server, backup_server, directory, bastion, web_server, dns_server, mail_server]
+    versions: [9.2p1, 9.6p1]
+    port: 22
+    protocol: tcp
+    auth_required: true
+    data_class: internal
+  restic_rest:
+    category: backup
+    packages: [rest-server, restic]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [backup_server]
+    versions: [0.13.0]
+    port: 8000
+    protocol: tcp
+    auth_required: true
+    data_class: confidential
+  wazuh_manager:
+    category: monitoring
+    packages: [wazuh-manager]  # name patterns (fnmatch) linking scanner packages to this service
+    roles: [siem]
+    versions: [4.14.9]
+    port: 1514
+    protocol: tcp
+    auth_required: true
+    data_class: internal
+
+#: Primary service per role, plus extras that always come along.
+role_services:
+  web_server: [nginx, openssh]
+  reverse_proxy: [nginx]
+  app_server: [flask_shop, openssh]
+  database: [postgresql, openssh]
+  dns_server: [unbound]
+  directory: [openldap, kerberos, openssh]
+  file_server: [samba, openssh]
+  mail_server: [postfix]
+  backup_server: [restic_rest, openssh]
+  bastion: [openssh]
+  siem: [wazuh_manager]
+  workstation: []
+  admin_workstation: []
+
+#: Service dependencies by role (consumer role -> provider roles).
+role_dependencies:
+  web_server: [app_server]
+  app_server: [database, directory]
+  backup_server: [database, file_server]
+  mail_server: [dns_server]
+
+#: Base criticality by role before data and fan-in adjustments (INPUT Part 2, A4).
+base_criticality:
+  router_firewall: 4
+  ids_sensor: 3
+  web_server: 3
+  reverse_proxy: 3
+  app_server: 3
+  database: 4
+  dns_server: 3
+  directory: 4
+  file_server: 3
+  mail_server: 3
+  backup_server: 3
+  bastion: 4
+  siem: 4
+  workstation: 1
+  admin_workstation: 3
+
+os_profiles:
+  server: [debian-12, ubuntu-24.04, rocky-9]
+  workstation: [ubuntu-24.04, debian-12]

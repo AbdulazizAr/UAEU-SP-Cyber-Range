@@ -1,0 +1,39 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-11-02T01:02:03.456Z",
+  "ArtifactName": "/in/fixture.tar",
+  "ArtifactType": "container_image",
+  "Metadata": {"OS": {"Family": "debian", "Name": "12.7"}, "ImageID": "sha256:0123456789abcdef"},
+  "Results": [
+    {
+      "Target": "fixture (debian 12.7)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Packages": [
+        {"ID": "nginx@1.22.1-9", "Name": "nginx", "Identifier": {"PURL": "pkg:deb/debian/nginx@1.22.1-9?arch=amd64&distro=debian-12.7"}, "Version": "1.22.1", "Release": "9", "SrcName": "nginx", "DependsOn": ["libssl3@3.0.13-1~deb12u1"]},
+        {"ID": "libssl3@3.0.13-1~deb12u1", "Name": "libssl3", "Identifier": {"PURL": "pkg:deb/debian/libssl3@3.0.13-1~deb12u1?arch=amd64&distro=debian-12.7"}, "Version": "3.0.13", "Release": "1~deb12u1", "SrcName": "openssl"},
+        {"ID": "openssh-server@1:9.2p1-2+deb12u2", "Name": "openssh-server", "Identifier": {"PURL": "pkg:deb/debian/openssh-server@9.2p1-2%2Bdeb12u2?arch=amd64&epoch=1&distro=debian-12.7"}, "Version": "9.2p1", "Release": "2+deb12u2", "Epoch": 1, "SrcName": "openssh"},
+        {"ID": "libc6@2.36-9+deb12u7", "Name": "libc6", "Identifier": {"PURL": "pkg:deb/debian/libc6@2.36-9%2Bdeb12u7?arch=amd64&distro=debian-12.7"}, "Version": "2.36", "Release": "9+deb12u7", "SrcName": "glibc"}
+      ],
+      "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-2023-44487", "PkgID": "nginx@1.22.1-9", "PkgName": "nginx", "InstalledVersion": "1.22.1-9", "FixedVersion": "1.22.1-9+deb12u1", "Status": "fixed", "Severity": "HIGH", "CweIDs": ["CWE-400"], "CVSS": {"nvd": {"V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H", "V3Score": 7.5}}, "PublishedDate": "2023-10-10T14:15:10.023Z", "LastModifiedDate": "2025-01-20T10:00:00Z"},
+        {"VulnerabilityID": "CVE-2024-6387", "PkgID": "openssh-server@1:9.2p1-2+deb12u2", "PkgName": "openssh-server", "InstalledVersion": "1:9.2p1-2+deb12u2", "FixedVersion": "1:9.2p1-2+deb12u3", "Status": "fixed", "Severity": "HIGH", "CVSS": {"nvd": {"V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H", "V3Score": 8.1}}, "PublishedDate": "2024-07-01T13:15:10Z", "LastModifiedDate": "2026-09-01T00:00:00Z"},
+        {"VulnerabilityID": "CVE-2026-0001", "PkgID": "libssl3@3.0.13-1~deb12u1", "PkgName": "libssl3", "InstalledVersion": "3.0.13-1~deb12u1", "Status": "affected", "Severity": "CRITICAL", "CVSS": {"nvd": {"V40Vector": "CVSS:4.0/AV:N", "V40Score": 9.3}}, "PublishedDate": "2026-03-01T00:00:00Z"},
+        {"VulnerabilityID": "TEMP-0841856-B18BAF", "PkgID": "libc6@2.36-9+deb12u7", "PkgName": "libc6", "InstalledVersion": "2.36-9+deb12u7", "Severity": "LOW"},
+        {"VulnerabilityID": "CVE-2010-4756", "PkgID": "libc6@2.36-9+deb12u7", "PkgName": "libc6", "InstalledVersion": "2.36-9+deb12u7", "Status": "will_not_fix", "Severity": "LOW"}
+      ]
+    },
+    {
+      "Target": "usr/local/lib/python3.11/site-packages",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Packages": [
+        {"ID": "werkzeug@3.0.1", "Name": "werkzeug", "Identifier": {"PURL": "pkg:pypi/werkzeug@3.0.1"}, "Version": "3.0.1"},
+        {"ID": "flask@3.0.0", "Name": "flask", "Identifier": {"PURL": "pkg:pypi/flask@3.0.0"}, "Version": "3.0.0", "DependsOn": ["werkzeug@3.0.1"]}
+      ],
+      "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-2024-34069", "PkgID": "werkzeug@3.0.1", "PkgName": "werkzeug", "PkgIdentifier": {"PURL": "pkg:pypi/werkzeug@3.0.1"}, "InstalledVersion": "3.0.1", "FixedVersion": "3.0.3", "Status": "fixed", "Severity": "HIGH", "CVSS": {"ghsa": {"V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:H", "V3Score": 7.5}}, "PublishedDate": "2024-05-06T15:15:23Z"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+# Pinned external references (roadmap: "Reference standards").
+#
+# `iris refs fetch` downloads each `fetch: url` entry into $IRIS_DATA/references/<id>/,
+# computes its SHA-256 and records it in lock.json (commit lock.json).
+# `iris refs verify` re-hashes every file against the lock.
+# `fetch: manual` entries must be placed by hand (licensed or not machine-downloadable);
+# the dataset only ever carries IDs from them, never their text.
+#
+# URLs marked `url_verified: false` follow the publisher's published layout but were not
+# reachable from the build sandbox; the first fetch on a networked machine confirms them.
+
+references:
+  - id: attack-enterprise
+    title: MITRE ATT&CK Enterprise (STIX 2.1)
+    version: "20.0"
+    released: 2026-10-13
+    kind: attack_stix
+    fetch: url
+    url: https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack-20.0.json
+    filename: enterprise-attack-20.0.json
+    url_verified: false
+    license: "ATT&CK Terms of Use (free, attribution required)"
+    platforms: [Linux, Network, Network Devices, Containers]
+
+  - id: nist-800-53-r5
+    title: NIST SP 800-53 Rev. 5 catalog (OSCAL JSON)
+    version: rev5-latest-at-pin
+    kind: oscal_catalog
+    fetch: url
+    url: https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+    filename: NIST_SP-800-53_rev5_catalog.json
+    url_verified: false
+    license: Public domain (US Government work)
+
+  - id: ctid-800-53-attack
+    title: CTID Mappings Explorer - NIST 800-53 Rev. 5 to ATT&CK
+    version: latest-at-pin
+    kind: ctid_mappings
+    fetch: manual
+    filename: nist_800_53-rev5_attack-mappings.json
+    url: https://center-for-threat-informed-defense.github.io/mappings-explorer/external/nist/
+    license: Apache-2.0 (CTID open source)
+    notes: Mapped to an older ATT&CK version; re-check every technique against attack-enterprise v20.
+
+  - id: d3fend
+    title: MITRE D3FEND ontology
+    version: 1.x-latest-at-pin
+    kind: d3fend_ontology
+    fetch: url
+    url: https://d3fend.mitre.org/ontologies/d3fend.json
+    filename: d3fend.json
+    url_verified: false
+    license: "D3FEND terms (free, attribution required)"
+    notes: Parser arrives with P8 (D4 recommendation vocabulary).
+
+  - id: nist-csf-2
+    title: NIST Cybersecurity Framework 2.0 core
+    version: "2.0"
+    kind: csf_core
+    fetch: manual
+    filename: csf-2.0-core.json
+    url: https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/CSF_2_0_0/home
+    license: Public domain (US Government work)
+    notes: Export the CSF 2.0 core from NIST CPRT as JSON. Parser arrives with P5.
+
+  - id: iso-27001-2022
+    title: ISO/IEC 27001:2022 Annex A control IDs and short titles
+    version: "2022"
+    kind: id_list
+    fetch: manual
+    filename: iso27001-2022-annexA-ids.csv
+    license: Copyrighted by ISO. Store IDs and our own short names only; never reproduce control text.
+
+  - id: cis-controls-8-1
+    title: CIS Critical Security Controls v8.1 safeguard IDs
+    version: "8.1"
+    released: 2024-06-25
+    kind: id_list
+    fetch: manual
+    filename: cis-controls-v8.1-ids.csv
+    url: https://www.cisecurity.org/controls/v8-1
+    license: CC BY-NC-ND 4.0. Cite IDs; do not redistribute modified text.
+
+  # ---- vulnerability intelligence (P5 posture). Scenario dates fall between about
+  # 2025-05 and 2026-08, so monthly snapshots from 2025-04 cover every as-of date.
+
+  - id: cisa-kev
+    title: CISA Known Exploited Vulnerabilities catalog (JSON)
+    version: latest-at-pin
+    kind: kev_catalog
+    fetch: url
+    url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    filename: known_exploited_vulnerabilities.json
+    license: Public domain (US Government work)
+    notes: Date-gated by dateAdded at every as-of time.
+
+  - id: epss-{date}
+    title: FIRST EPSS scores snapshot {date}
+    version: "{date}"
+    kind: epss_scores
+    fetch: url
+    url: https://epss.empiricalsecurity.com/epss_scores-{date}.csv.gz
+    filename: epss_scores-{date}.csv.gz
+    url_verified: false
+    license: "FIRST EPSS (free use with attribution)"
+    notes: The latest snapshot on or before the as-of date is used; none means EPSS is omitted.
+    series_dates: [2025-04-01, 2025-05-01, 2025-06-01, 2025-07-01, 2025-08-01, 2025-09-01, 2025-10-01, 2025-11-01, 2025-12-01, 2026-01-01, 2026-02-01, 2026-03-01, 2026-04-01, 2026-05-01, 2026-06-01, 2026-07-01, 2026-08-01, 2026-09-01, 2026-10-01, 2026-11-01]
+
+  - id: trivy-db
+    title: Trivy vulnerability DB snapshot (cache directory tarball)
+    version: snapshot-at-pin
+    kind: trivy_db
+    fetch: manual
+    filename: trivy-db.tar.gz
+    license: "Trivy DB (Apache-2.0 tooling; advisory data under each source's terms)"
+    notes: Made by `iris posture db`; the DB's UpdatedAt is recorded as trivy_db_date in every package.

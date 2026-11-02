@@ -1,0 +1,39 @@
+# P1 network spike: two zones joined by a router/firewall container. The Suricata sensor
+# is started by the runner inside the router's network namespace.
+# Docker's own bridge holds .254 in each zone; the router (our gateway) is .1.
+services:
+  router:
+    image: iris/netbox:spike
+    container_name: iris-spike-net-router
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    networks:
+      zone_a: {ipv4_address: 10.99.1.1}
+      zone_b: {ipv4_address: 10.99.2.1}
+
+  client:
+    image: iris/netbox:spike
+    container_name: iris-spike-net-client
+    cap_add: [NET_ADMIN]
+    networks:
+      zone_a: {ipv4_address: 10.99.1.10}
+
+  server:
+    image: iris/netbox:spike
+    container_name: iris-spike-net-server
+    cap_add: [NET_ADMIN]
+    command: >
+      sh -c "python3 -m http.server 8080 >/tmp/http.log 2>&1 &
+             nc -lk 9090 >/tmp/nc9090.log 2>&1 &
+             sleep infinity"
+    networks:
+      zone_b: {ipv4_address: 10.99.2.10}
+
+networks:
+  zone_a:
+    ipam:
+      config: [{subnet: 10.99.1.0/24, gateway: 10.99.1.254}]
+  zone_b:
+    ipam:
+      config: [{subnet: 10.99.2.0/24, gateway: 10.99.2.254}]

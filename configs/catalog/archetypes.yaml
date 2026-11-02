@@ -1,0 +1,60 @@
+# Topology archetypes (INPUT Part 1, 1.2 step 2). v1 ships 3 of the 6 planned; the others
+# (DMZ-heavy web, dev/CI-heavy, medical/OT-lite) arrive in P7.
+# role_zone: where each role lives in this archetype. Roles absent from the map are not used.
+# Every parameter here is a documented assumption, not measured truth.
+catalog_version: "0.1.0"
+
+archetypes:
+  compact_three_zone:
+    description: Perimeter DMZ, one user zone, one server zone.
+    zones: [internet, dmz, users, servers]
+    role_zone:
+      web_server: dmz
+      reverse_proxy: dmz
+      mail_server: dmz
+      app_server: servers
+      database: servers
+      dns_server: servers
+      directory: servers
+      file_server: servers
+      backup_server: servers
+      siem: servers
+      workstation: users
+      admin_workstation: users
+    sizes: [S, M]
+
+  segmented_five_zone:
+    description: DMZ, users, servers, a separate data zone and a management zone with a bastion.
+    zones: [internet, dmz, users, servers, data, mgmt]
+    role_zone:
+      web_server: dmz
+      reverse_proxy: dmz
+      mail_server: dmz
+      app_server: servers
+      dns_server: servers
+      directory: mgmt
+      file_server: data
+      database: data
+      backup_server: mgmt
+      siem: mgmt
+      bastion: mgmt
+      workstation: users
+      admin_workstation: mgmt
+    sizes: [M, L]
+
+  flat_small_office:
+    description: Small office, one internal LAN for people and servers, a thin DMZ.
+    zones: [internet, dmz, office]
+    zone_kinds: {office: users}
+    role_zone:
+      web_server: dmz
+      app_server: office
+      database: office
+      dns_server: office
+      file_server: office
+      backup_server: office
+      siem: office
+      workstation: office
+      admin_workstation: office
+    sizes: [S]
+    allows_db_in_user_zone: true

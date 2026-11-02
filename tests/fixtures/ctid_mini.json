@@ -1,0 +1,12 @@
+{
+  "metadata": {"mapping_framework": "nist_800_53", "mapping_framework_version": "rev5", "attack_version": "14.1",
+               "technology_domain": "enterprise"},
+  "mapping_objects": [
+    {"capability_id": "IA-2(1)", "attack_object_id": "T1110", "mapping_type": "mitigates"},
+    {"capability_id": "IA-2(1)", "attack_object_id": "T1110.001", "mapping_type": "mitigates"},
+    {"capability_id": "AC-4", "attack_object_id": "T1190", "mapping_type": "mitigates"},
+    {"capability_id": "AC-2", "attack_object_id": "T1064", "mapping_type": "mitigates"},
+    {"capability_id": "AC-2", "attack_object_id": "T1999", "mapping_type": "mitigates"},
+    {"capability_id": "AC-2", "attack_object_id": null, "mapping_type": "non_mappable", "status": "non_mappable"}
+  ]
+}

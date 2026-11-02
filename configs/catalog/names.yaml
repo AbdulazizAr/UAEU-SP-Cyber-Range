@@ -1,0 +1,8 @@
+# Name pools for synthetic identities. Mixed regions on purpose; never real people.
+catalog_version: "0.1.0"
+first: [sara, omar, lina, ahmed, fatima, yusuf, mariam, khalid, noor, hassan, layla, ali, aisha, zaid, huda,
+        james, emma, daniel, olivia, lucas, sofia, noah, mia, ethan, chloe, arjun, priya, rohan, ananya,
+        wei, mei, hiro, yuki, kenji, carlos, lucia, diego, elena, ivan, anna, tomas, eva, kofi, amara]
+last: [haddad, khalil, mansour, rahman, saleh, nasser, farouk, darwish, qasim, hamdan, aziz, karim,
+       smith, johnson, brown, taylor, wilson, clark, lewis, walker, patel, sharma, iyer, chen, wang,
+       tanaka, sato, garcia, lopez, martinez, petrov, novak, mensah, okafor]

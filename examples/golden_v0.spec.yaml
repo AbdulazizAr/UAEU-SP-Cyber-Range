@@ -1,0 +1,147 @@
+# Golden-sample-sized Scenario Spec v0 (hand-written; P2's sampler will generate these).
+# Compact three-zone archetype + simulated internet. 9 assets, 3 short episodes,
+# one deliberate SOC blind spot (adm-01), two planted weaknesses (hidden plane only).
+spec_version: "0.1.0"
+seeds:
+  master: 20261102
+  generator_major: 0
+  subseeds:
+    org: 2107895964927993195
+    topology: 2376295766711391251
+    services: 8972806979967526670
+    identity: 8957981914710551679
+    weakness: 5815832205118568336
+    traffic: 1950213973669325332
+    attack: 2537179911093111595
+    monitoring: 8575186733913046682
+    time: 8648455394034114476
+    grc: 2236583217635229630
+  overridden: []
+
+organization:
+  organization_id: ORG-0001
+  name: Dunewell Retail
+  industry: retail
+  size: S
+  maturity: medium
+  timezone: Asia/Dubai
+  business_units: [Retail Operations, Finance, IT]
+  business_services: [E-Commerce, Payments, Identity]
+
+calendar:
+  start: 2025-03-01
+  horizon_days: 30
+  timezone: Asia/Dubai
+
+archetype: compact_three_zone
+
+zones:
+  - {name: internet, kind: internet, subnet: 198.51.100.0/24, gateway: 198.51.100.1}
+  - {name: dmz, kind: dmz, subnet: 10.64.10.0/24, gateway: 10.64.10.1}
+  - {name: users, kind: users, subnet: 10.64.20.0/24, gateway: 10.64.20.1}
+  - {name: servers, kind: servers, subnet: 10.64.30.0/24, gateway: 10.64.30.1}
+
+policy:
+  - {src_zone: internet, dst_zone: dmz, protocol: tcp, ports: [80, 443], action: allow}
+  - {src_zone: internet, dst_zone: servers, protocol: any, action: deny}
+  - {src_zone: internet, dst_zone: users, protocol: any, action: deny}
+  - {src_zone: dmz, dst_zone: servers, protocol: tcp, ports: [8000], action: allow}
+  - {src_zone: dmz, dst_zone: servers, protocol: udp, ports: [53], action: allow}
+  - {src_zone: users, dst_zone: dmz, protocol: tcp, ports: [80, 443], action: allow}
+  - {src_zone: users, dst_zone: servers, protocol: udp, ports: [53], action: allow}
+  - {src_zone: users, dst_zone: servers, protocol: tcp, ports: [22], action: allow, is_exception: true}
+
+assets:
+  - asset_id: AST-RTR-001
+    hostname: rtr-01
+    role: router_firewall
+    os_profile: debian-12
+    attachments:
+      - {zone: internet, ip: 198.51.100.1}
+      - {zone: dmz, ip: 10.64.10.1}
+      - {zone: users, ip: 10.64.20.1}
+      - {zone: servers, ip: 10.64.30.1}
+    monitored: false
+    true_criticality: 4
+  - asset_id: AST-IDS-001
+    hostname: ids-01
+    role: ids_sensor
+    os_profile: debian-12
+    shares_namespace_with: AST-RTR-001
+    true_criticality: 3
+  - asset_id: AST-WEB-001
+    hostname: web-01
+    role: web_server
+    os_profile: debian-12
+    attachments: [{zone: dmz, ip: 10.64.10.10}]
+    true_criticality: 4
+    internet_exposed: true
+  - asset_id: AST-APP-001
+    hostname: app-01
+    role: app_server
+    os_profile: debian-12
+    attachments: [{zone: servers, ip: 10.64.30.20}]
+    true_criticality: 4
+    data_class: confidential
+  - asset_id: AST-DB-001
+    hostname: db-01
+    role: database
+    os_profile: debian-12
+    attachments: [{zone: servers, ip: 10.64.30.30}]
+    true_criticality: 5
+    data_class: regulated
+  - asset_id: AST-DNS-001
+    hostname: dns-01
+    role: dns_server
+    os_profile: debian-12
+    attachments: [{zone: servers, ip: 10.64.30.53}]
+    true_criticality: 3
+  - asset_id: AST-SIEM-001
+    hostname: siem-01
+    role: siem
+    os_profile: wazuh-manager
+    attachments: [{zone: servers, ip: 10.64.30.100}]
+    monitored: false
+    true_criticality: 4
+  - asset_id: AST-WS-001
+    hostname: ws-01
+    role: workstation
+    os_profile: ubuntu-24.04
+    attachments: [{zone: users, ip: 10.64.20.50}]
+    population_size: 40
+    true_criticality: 2
+  - asset_id: AST-ADM-001
+    hostname: adm-01
+    role: admin_workstation
+    os_profile: ubuntu-24.04
+    attachments: [{zone: users, ip: 10.64.20.10}]
+    monitored: false   # deliberate SOC blind spot
+    true_criticality: 3
+
+externals:
+  - {node_id: EXT-CLIENT-001, kind: client, zone: internet, ip: 198.51.100.20}
+  - {node_id: EXT-ATK-001, kind: attacker, zone: internet, ip: 198.51.100.66}
+
+services:
+  - {service_id: SVC-WEB-001, asset_id: AST-WEB-001, recipe: nginx, version: 1.24.0, port: 443, tls: true, auth_required: false, depends_on: [SVC-APP-001]}
+  - {service_id: SVC-APP-001, asset_id: AST-APP-001, recipe: flask_shop, version: 0.3.0, port: 8000, depends_on: [SVC-DB-001], data_class: confidential}
+  - {service_id: SVC-DB-001, asset_id: AST-DB-001, recipe: postgresql, version: "15.6", port: 5432, data_class: regulated}
+  - {service_id: SVC-DNS-001, asset_id: AST-DNS-001, recipe: unbound, version: 1.17.1, port: 53, protocol: udp, auth_required: false}
+  - {service_id: SVC-SSH-001, asset_id: AST-APP-001, recipe: openssh, version: 9.2p1, port: 22}
+  - {service_id: SVC-SSH-002, asset_id: AST-DB-001, recipe: openssh, version: 9.2p1, port: 22}
+
+identities:
+  - {identity_id: IDN-0001, username: sara.haddad, kind: human, department: IT, privilege: admin, groups: [sudo, dbadmin], assigned_assets: [AST-ADM-001], mfa_enforced: true}
+  - {identity_id: IDN-0002, username: omar.khalil, kind: human, department: Retail Operations, privilege: standard, assigned_assets: [AST-WS-001]}
+  - {identity_id: IDN-0003, username: lina.mansour, kind: human, department: Finance, privilege: standard, assigned_assets: [AST-WS-001]}
+  - {identity_id: IDN-0004, username: svc_shop, kind: service, department: IT, privilege: service, assigned_assets: [AST-APP-001]}
+  - {identity_id: IDN-0005, username: svc_backup, kind: service, department: IT, privilege: service, assigned_assets: [AST-DB-001]}
+
+weaknesses:
+  - {weakness_id: WK-0001, module: web.sqli_login, kind: C, asset_id: AST-APP-001, service_id: SVC-APP-001, enabling_control: CTRL-APP-001, cwe: CWE-89, attackable: true}
+  - {weakness_id: WK-0002, module: auth.ssh_password_allowed, kind: B, asset_id: AST-DB-001, service_id: SVC-SSH-002, enabling_control: CTRL-IAM-002, cwe: CWE-287, attackable: true}
+
+episodes:
+  - {index: 1, virtual_start: "2025-03-03T05:40:00Z", virtual_end: "2025-03-03T05:50:00Z", purpose: baseline}
+  - {index: 2, virtual_start: "2025-03-10T06:00:00Z", virtual_end: "2025-03-10T06:10:00Z", purpose: attack_stage}
+  - {index: 3, virtual_start: "2025-03-17T07:00:00Z", virtual_end: "2025-03-17T07:10:00Z", purpose: attack_stage}

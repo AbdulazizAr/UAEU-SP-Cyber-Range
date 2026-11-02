@@ -1,0 +1,41 @@
+# P1 Wazuh spike: 1 manager + 2 agents, shared virtual-time offset, per-container state volumes.
+# Driven by `iris spike wazuh`; FAKETIME and IRIS_LD_PRELOAD are set by the runner.
+x-virtual-time: &vt
+  FAKETIME: ${FAKETIME:-}
+  LD_PRELOAD: ${IRIS_LD_PRELOAD:-}
+  FAKETIME_DONT_FAKE_MONOTONIC: "1"
+
+services:
+  manager:
+    image: iris/wazuh-manager:spike
+    container_name: iris-spike-wazuh-manager
+    hostname: siem-01
+    environment: *vt
+    volumes: [mgr_ossec:/var/ossec]
+
+  agent1:
+    image: iris/wazuh-agent:spike
+    container_name: iris-spike-wazuh-agent1
+    hostname: web-01
+    environment:
+      <<: *vt
+      WAZUH_MANAGER: manager
+      AGENT_NAME: spike-web-01
+    volumes: [a1_ossec:/var/ossec]
+    depends_on: [manager]
+
+  agent2:
+    image: iris/wazuh-agent:spike
+    container_name: iris-spike-wazuh-agent2
+    hostname: db-01
+    environment:
+      <<: *vt
+      WAZUH_MANAGER: manager
+      AGENT_NAME: spike-db-01
+    volumes: [a2_ossec:/var/ossec]
+    depends_on: [manager]
+
+volumes:
+  mgr_ossec:
+  a1_ossec:
+  a2_ossec:

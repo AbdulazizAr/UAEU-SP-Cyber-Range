@@ -1,0 +1,36 @@
+INPUT: 
+-simulate our own Pusedo-random -realistic generation of multiple network topologies and traffic, noise, and attacks, and GRC full virtually and scenarios. 
+
+define a scenario as : a realistic pesdo generated (Linux based) Enterpise network topology , with SOC (Wazuh) , an GRC config with it , 
+running some normal traffic of internal users, external users, attack scripts, Custom Wazuh rules, etc.... the OUTPUT is some sceraio things gonna be used Later on as input for the SYSTEM.
+
+ 
+using: -Python scripts -Wazuh (our central SOC station) - Suricata (our IDS's) - GRC - DOCKER (multiple temporary containers) 
+- Network Nodes - pesdeuo generated realstic (Pure Linux OS's) they consist of (every endpoint is a docker virtual os) :
+	-Working Servers (Web, mail, application, databases, Domain controllers, etc... etc... lots of others)
+	(The servers need to also be automatically configured and working for their Temporary time)
+	-End point work Stations (Simulate Office of users etc... (a lab or a big office of lots of computers of the same highrarchy may be 	 simlifed as 1 or 2 workstaions only)  
+	-USER's, Privilages, Access controls, services, Key's, Encryption techniques, etc... different things.
+	-Virtual Netowrk end points (Firewalls, ID's, Routers, (switchs (not really but a collection can be seen as a switch, and other 	 Enterprise level netowrking devices. 
+	-GRC Pesedo generated 
+	-Other metrics for evaulating Vulnerbities, Security Maturity, need to be addressed
+	-Full SBOM of everything
+	-Full CVE's / Vulnerbitity Scanning for every scenrio 
+	-Malicous end points, different lvl/behaviour/ point and access control type (Hackers)/Hacking activity (example: External user 	 trying to BRUTE force password, or Internal 	 Insider Threat, or maybe Redteam trying some stuff out... ) so many different possiblities, Also Pusedo generated... 
+	-Virutal CLOCK, Time, Calender for quick somulation of long time, ( example depending on processing power (1s = 1month) ofc not like this but need to be implemented correctly)  	 showing different event at time intervals etc...
+	-Connecting to External LIVE, CVE/Vulnerbities Database, using SBOM, OS's Service, Versions, of configuration to link it to an ACTIVE vulnerbitiy database (for AI to be useful 	 finding stuff as they are chaning realstically, not relying on outdated info only.	 example, this may be hard to implement reasltically, with time and OS's we hv etc... but we 	 need at least the concept to work, may be OPTIONAL IF it was very challenging.)
+	-Since Windows is just very challengin to simulate and make it virutall and stuff working auto config, CPU consuption, the simulation is going to be full automatic, pesduo 	   	 generated Linux Based Enterprise System, that can apply to real word orginzations, even tho they use Window'S OS, soo ye.
+	-Truth/ (What acctually happened, a collection of everything recorded for each scenario from SBOMs, Time, OS', Netowrk topology, Security controls, What important vulerbility c	 onfigs/ attack scenario happened (Wazuh configs and alerts and its stuff, (full GRC stuff) , etc... (kept hidden from the SYSTEM Machine learning ai, it's used for IDK here is 	 what u came up with, here is the reality, did u do good type of 	 learning , not a Machine learning guy... u may know better, but u get the idea
+	-Scenarion package type compressed maintained, stored, can be replicated or alterted given the correct (Seeds, for every pesdo generating alogrthim) 
+
+
+
+SYSTEM:
+-A Strong Machine learning model for CyberSecurity (SOC-GRC) language translation, finding gaps, recommened changes if need be, with evedice and confidence and other things . #note not nessary a (Natural Langauge model) + NOt nessarly a single model , it needs to be strong and realstic and useful in real life for complex scenarios that may be challenging to human teams. to some extend, Also we may hv some Determinsitic stuff here and there. and provide an OUTPUT
+
+OUTPUT:
+-Something that helps SOC-GRC with AI (Visual live dashboard + Report + antyhing else they may like) 
+
+
+OUTSIDE PRESENTING PROJECT VISUAL HELPERS:
+-Dashboards and visual stuff, like each scenrio visualization, netowork topology, wazuh monitoring, GRC, health etc... etc... these for presenting the Project for evaulators who may not understand deep techiniqacl Netowrk, Or Cyber Security, or AI stuff or evern antyhing else, to help them understand whats going on in a way that can be deep yet simple for them to comprehend. 

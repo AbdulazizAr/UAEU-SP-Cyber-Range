@@ -1,0 +1,99 @@
+# Internal control catalog v0 (INPUT Part 2, A6). Names are OUR short names.
+# Framework references are IDs only (ISO/IEC 27001:2022 and CIS v8.1 text is never stored).
+# provenance: ours / review_status: draft -> two reviewers before release (decisions.md).
+#
+# test: how reality is computed from the spec
+#   weakness       missing on assets carrying a weakness that names this control, else implemented
+#   mfa_privileged share of admin identities with MFA (all/some/none)
+#   mfa_users      share of standard humans with MFA
+#   segmentation   any internal any-any exception -> missing; port-scoped exceptions -> partial
+#   monitored      per asset: Wazuh agent present
+#   tls            per asset: every TLS-capable service runs TLS
+#   sensor         network IDS present
+#   exposure       internet reaches only DMZ zones
+#   backup         needs a backup server, then process probability
+#   process        organisational process: sampled from maturity probabilities
+catalog_version: "0.1.0"
+
+controls:
+  CTRL-INV-001: {name: Hardware and host inventory, function: IDENTIFY, test: process, roles: all,
+                 refs: {NIST_SP_800_53_R5: [CM-8], NIST_CSF_2_0: [ID.AM-01], CIS_V8_1: ["1.1"], ISO_27001_2022: ["5.9"]}}
+  CTRL-INV-002: {name: Software inventory and SBOM, function: IDENTIFY, test: process, roles: servers,
+                 refs: {NIST_SP_800_53_R5: [CM-8], NIST_CSF_2_0: [ID.AM-02], CIS_V8_1: ["2.1"], ISO_27001_2022: ["5.9"]}}
+  CTRL-DAT-001: {name: Data classification, function: IDENTIFY, test: process, roles: data,
+                 refs: {NIST_SP_800_53_R5: [RA-2], NIST_CSF_2_0: [ID.AM-05], CIS_V8_1: ["3.7"], ISO_27001_2022: ["5.12"]}}
+  CTRL-GOV-001: {name: Risk assessment process, function: GOVERN, test: process, roles: org,
+                 refs: {NIST_SP_800_53_R5: [RA-3], NIST_CSF_2_0: [GV.RM-01, ID.RA-05], CIS_V8_1: [], ISO_27001_2022: ["5.1"]}}
+  CTRL-GOV-002: {name: Policy exception management, function: GOVERN, test: process, roles: org,
+                 refs: {NIST_SP_800_53_R5: [PM-9], NIST_CSF_2_0: [GV.PO-01], CIS_V8_1: [], ISO_27001_2022: ["5.1"]}}
+  CTRL-VUL-001: {name: Vulnerability scanning, function: IDENTIFY, test: process, roles: servers,
+                 refs: {NIST_SP_800_53_R5: [RA-5], NIST_CSF_2_0: [ID.RA-01], CIS_V8_1: ["7.1", "7.5"], ISO_27001_2022: ["8.8"]}}
+  CTRL-VUL-002: {name: Timely patching, function: PROTECT, test: process, roles: servers,
+                 refs: {NIST_SP_800_53_R5: [SI-2], NIST_CSF_2_0: [PR.PS-02], CIS_V8_1: ["7.4"], ISO_27001_2022: ["8.8"]}}
+  CTRL-CFG-001: {name: Secure baseline configuration, function: PROTECT, test: process, roles: servers,
+                 refs: {NIST_SP_800_53_R5: [CM-6], NIST_CSF_2_0: [PR.PS-01], CIS_V8_1: ["4.1"], ISO_27001_2022: ["8.9"]}}
+  CTRL-IAM-001: {name: MFA for privileged accounts, function: PROTECT, test: mfa_privileged, roles: identity,
+                 refs: {NIST_SP_800_53_R5: ["IA-2(1)"], NIST_CSF_2_0: [PR.AA-03], CIS_V8_1: ["6.5"], ISO_27001_2022: ["8.5"]}}
+  CTRL-IAM-002: {name: Strong authentication for remote access, function: PROTECT, test: weakness, roles: ssh,
+                 refs: {NIST_SP_800_53_R5: [AC-17, "IA-2(2)"], NIST_CSF_2_0: [PR.AA-03], CIS_V8_1: ["6.4"], ISO_27001_2022: ["8.5"]}}
+  CTRL-IAM-003: {name: Default credentials changed, function: PROTECT, test: weakness, roles: database,
+                 refs: {NIST_SP_800_53_R5: [IA-5], NIST_CSF_2_0: [PR.AA-01], CIS_V8_1: ["4.7"], ISO_27001_2022: ["5.17"]}}
+  CTRL-IAM-004: {name: No direct remote root login, function: PROTECT, test: weakness, roles: ssh,
+                 refs: {NIST_SP_800_53_R5: ["AC-6(2)"], NIST_CSF_2_0: [PR.AA-05], CIS_V8_1: ["5.4"], ISO_27001_2022: ["8.2"]}}
+  CTRL-IAM-005: {name: Unique credentials and keys, function: PROTECT, test: weakness, roles: ssh,
+                 refs: {NIST_SP_800_53_R5: [IA-5], NIST_CSF_2_0: [PR.AA-01], CIS_V8_1: ["5.2"], ISO_27001_2022: ["5.17"]}}
+  CTRL-IAM-006: {name: MFA for workforce accounts, function: PROTECT, test: mfa_users, roles: identity,
+                 refs: {NIST_SP_800_53_R5: ["IA-2(2)"], NIST_CSF_2_0: [PR.AA-03], CIS_V8_1: ["6.3"], ISO_27001_2022: ["8.5"]}}
+  CTRL-ACC-002: {name: File share access control, function: PROTECT, test: weakness, roles: file_server,
+                 refs: {NIST_SP_800_53_R5: [AC-3], NIST_CSF_2_0: [PR.AA-05], CIS_V8_1: ["3.3"], ISO_27001_2022: ["5.15"]}}
+  CTRL-ACC-003: {name: Least privilege for administration, function: PROTECT, test: weakness, roles: ssh,
+                 refs: {NIST_SP_800_53_R5: [AC-6], NIST_CSF_2_0: [PR.AA-05], CIS_V8_1: ["5.4"], ISO_27001_2022: ["8.2"]}}
+  CTRL-ACC-004: {name: Directory access control, function: PROTECT, test: weakness, roles: directory,
+                 refs: {NIST_SP_800_53_R5: [AC-3], NIST_CSF_2_0: [PR.AA-05], CIS_V8_1: ["6.8"], ISO_27001_2022: ["5.15"]}}
+  CTRL-ACC-005: {name: Backup repository access control, function: PROTECT, test: weakness, roles: backup_server,
+                 refs: {NIST_SP_800_53_R5: [CP-9], NIST_CSF_2_0: [PR.DS-11], CIS_V8_1: ["11.3"], ISO_27001_2022: ["8.13"]}}
+  CTRL-APP-001: {name: Input validation and secure coding, function: PROTECT, test: weakness, roles: app_server,
+                 refs: {NIST_SP_800_53_R5: [SI-10], NIST_CSF_2_0: [PR.PS-06], CIS_V8_1: ["16.12"], ISO_27001_2022: ["8.28"]}}
+  CTRL-APP-002: {name: Application authorisation checks, function: PROTECT, test: weakness, roles: app_server,
+                 refs: {NIST_SP_800_53_R5: [AC-3], NIST_CSF_2_0: [PR.AA-05], CIS_V8_1: ["16.1"], ISO_27001_2022: ["8.25"]}}
+  CTRL-NET-001: {name: Network segmentation default deny, function: PROTECT, test: segmentation, roles: router_firewall,
+                 refs: {NIST_SP_800_53_R5: [SC-7], NIST_CSF_2_0: [PR.IR-01], CIS_V8_1: ["12.2", "13.4"], ISO_27001_2022: ["8.22"]}}
+  CTRL-NET-002: {name: Services bound to required interfaces only, function: PROTECT, test: weakness, roles: database,
+                 refs: {NIST_SP_800_53_R5: [CM-7], NIST_CSF_2_0: [PR.PS-01], CIS_V8_1: ["4.8"], ISO_27001_2022: ["8.9"]}}
+  CTRL-NET-003: {name: Admin interfaces not exposed, function: PROTECT, test: weakness, roles: web_server,
+                 refs: {NIST_SP_800_53_R5: [SC-7], NIST_CSF_2_0: [PR.IR-01], CIS_V8_1: ["4.4"], ISO_27001_2022: ["8.20"]}}
+  CTRL-NET-004: {name: Mail relay restricted, function: PROTECT, test: weakness, roles: mail_server,
+                 refs: {NIST_SP_800_53_R5: [CM-7], NIST_CSF_2_0: [PR.PS-01], CIS_V8_1: ["4.1"], ISO_27001_2022: ["8.20"]}}
+  CTRL-NET-005: {name: Internet exposure limited to DMZ, function: PROTECT, test: exposure, roles: router_firewall,
+                 refs: {NIST_SP_800_53_R5: [SC-7], NIST_CSF_2_0: [PR.IR-01], CIS_V8_1: ["12.2"], ISO_27001_2022: ["8.20"]}}
+  CTRL-CRY-001: {name: Strong TLS configuration, function: PROTECT, test: weakness, roles: web_server,
+                 refs: {NIST_SP_800_53_R5: [SC-13], NIST_CSF_2_0: [PR.DS-02], CIS_V8_1: ["3.10"], ISO_27001_2022: ["8.24"]}}
+  CTRL-CRY-002: {name: Encryption in transit for services, function: PROTECT, test: tls, roles: tls_services,
+                 refs: {NIST_SP_800_53_R5: [SC-8], NIST_CSF_2_0: [PR.DS-02], CIS_V8_1: ["3.10"], ISO_27001_2022: ["8.24"]}}
+  CTRL-BAK-001: {name: Backups of critical data, function: RECOVER, test: backup, roles: data,
+                 refs: {NIST_SP_800_53_R5: [CP-9], NIST_CSF_2_0: [PR.DS-11, RC.RP-03], CIS_V8_1: ["11.2"], ISO_27001_2022: ["8.13"]}}
+  CTRL-LOG-001: {name: Central security logging, function: DETECT, test: monitored, roles: monitorable,
+                 refs: {NIST_SP_800_53_R5: [AU-2, AU-6], NIST_CSF_2_0: [PR.PS-04, DE.CM-09], CIS_V8_1: ["8.2", "8.9"], ISO_27001_2022: ["8.15"]}}
+  CTRL-LOG-002: {name: Network intrusion detection, function: DETECT, test: sensor, roles: router_firewall,
+                 refs: {NIST_SP_800_53_R5: [SI-4], NIST_CSF_2_0: [DE.CM-01], CIS_V8_1: ["13.3"], ISO_27001_2022: ["8.16"]}}
+  CTRL-LOG-003: {name: File integrity monitoring on critical hosts, function: DETECT, test: process, roles: critical,
+                 refs: {NIST_SP_800_53_R5: [SI-7], NIST_CSF_2_0: [DE.CM-09], CIS_V8_1: ["3.14"], ISO_27001_2022: ["8.16"]}}
+  CTRL-IR-001:  {name: Incident response process, function: RESPOND, test: process, roles: org,
+                 refs: {NIST_SP_800_53_R5: [IR-4], NIST_CSF_2_0: [RS.MA-01], CIS_V8_1: ["17.4"], ISO_27001_2022: ["5.26"]}}
+
+#: Probability of implemented / partial / missing for process controls.
+process_probabilities:
+  low: [0.2, 0.4, 0.4]
+  medium: [0.5, 0.35, 0.15]
+  high: [0.8, 0.15, 0.05]
+
+#: Risk templates (INPUT Part 2, A5). One risk per template per matching asset group.
+risk_templates:
+  R-DB:  {scenario: Unauthorised access to a database, roles: [database], controls: [CTRL-IAM-003, CTRL-NET-002, CTRL-NET-001, CTRL-IAM-002]}
+  R-WEB: {scenario: Web application compromise, roles: [web_server, app_server], controls: [CTRL-APP-001, CTRL-APP-002, CTRL-CRY-001, CTRL-NET-003, CTRL-VUL-002]}
+  R-IDN: {scenario: Compromise of a privileged account, roles: [directory, admin_workstation], controls: [CTRL-IAM-001, CTRL-IAM-004, CTRL-IAM-005, CTRL-ACC-003]}
+  R-FIL: {scenario: Ransomware on file or backup servers, roles: [file_server, backup_server], controls: [CTRL-BAK-001, CTRL-ACC-002, CTRL-ACC-005]}
+  R-NET: {scenario: Lateral movement across zones, roles: [router_firewall], controls: [CTRL-NET-001, CTRL-LOG-002]}
+  R-INS: {scenario: Insider data exfiltration, roles: [workstation], controls: [CTRL-ACC-003, CTRL-LOG-001, CTRL-DAT-001]}
+  R-AVL: {scenario: Outage of a critical business service, roles: [web_server, database], controls: [CTRL-BAK-001, CTRL-VUL-002]}
+  R-MON: {scenario: Attack goes unnoticed, roles: [siem], controls: [CTRL-LOG-001, CTRL-LOG-002, CTRL-IR-001]}

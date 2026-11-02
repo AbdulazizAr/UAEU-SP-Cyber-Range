@@ -1,0 +1,131 @@
+# Industry profiles and size ranges (documented assumptions, INPUT Part 1 1.2 steps 1 and 3).
+catalog_version: "0.1.0"
+
+#: Archetype weights per industry (normalised at sampling time).
+industries:
+  retail:
+    business_units: [Store Operations, E-Commerce, Finance, Supply Chain, IT]
+    business_services: [Online Shop, Payments, Inventory, Loyalty, Identity]
+    regulated_data: [payment cards, customer PII]
+    archetypes: {compact_three_zone: 5, segmented_five_zone: 3, flat_small_office: 2}
+    name_words: [Dune, Oasis, Souq, Marina, Palm, Falcon, Pearl, Harbor]
+    name_suffix: [Retail, Market, Stores, Trading]
+  hospital:
+    business_units: [Clinical Services, Patient Records, Pharmacy, Finance, IT]
+    business_services: [Patient Portal, Records, Scheduling, Billing, Identity]
+    regulated_data: [patient health records]
+    archetypes: {compact_three_zone: 2, segmented_five_zone: 6, flat_small_office: 1}
+    name_words: [Crescent, Al Noor, Unity, Riverside, Cedar, Meridian]
+    name_suffix: [Hospital, Medical Center, Clinic, Health]
+  finance_lite:
+    business_units: [Retail Banking, Lending, Compliance, Finance, IT]
+    business_services: [Online Banking, Loans, Payments, Reporting, Identity]
+    regulated_data: [account data, customer PII]
+    archetypes: {compact_three_zone: 2, segmented_five_zone: 6, flat_small_office: 1}
+    name_words: [Summit, Sterling, Atlas, Granite, Beacon, Liberty]
+    name_suffix: [Finance, Credit, Capital, Bank]
+  university:
+    business_units: [Academic Affairs, Admissions, Research, Finance, IT]
+    business_services: [Student Portal, Learning, Admissions, Library, Identity]
+    regulated_data: [student records]
+    archetypes: {compact_three_zone: 4, segmented_five_zone: 4, flat_small_office: 1}
+    name_words: [Northgate, Horizon, Lakeside, Kingsway, Westfield, Vista]
+    name_suffix: [University, College, Institute]
+  saas:
+    business_units: [Engineering, Product, Customer Success, Finance, IT]
+    business_services: [Customer App, API, Billing, Support, Identity]
+    regulated_data: [customer PII]
+    archetypes: {compact_three_zone: 5, segmented_five_zone: 3, flat_small_office: 2}
+    name_words: [Nimbus, Quanta, Vector, Pixel, Orbit, Lumen]
+    name_suffix: [Labs, Cloud, Software, Systems]
+  manufacturing_lite:
+    business_units: [Production, Quality, Logistics, Finance, IT]
+    business_services: [Order Portal, ERP, Inventory, Supplier Portal, Identity]
+    regulated_data: [supplier contracts]
+    archetypes: {compact_three_zone: 4, segmented_five_zone: 4, flat_small_office: 2}
+    name_words: [Ironwood, Delta, Forge, Steelhaven, Apex, Titan]
+    name_suffix: [Industries, Manufacturing, Works]
+  public_sector_lite:
+    business_units: [Citizen Services, Licensing, Records, Finance, IT]
+    business_services: [Citizen Portal, Permits, Records, Payments, Identity]
+    regulated_data: [citizen records]
+    archetypes: {compact_three_zone: 3, segmented_five_zone: 5, flat_small_office: 1}
+    name_words: [Municipal, Civic, Emirate, District, Regional]
+    name_suffix: [Authority, Department, Council]
+  logistics_lite:
+    business_units: [Fleet, Warehousing, Customer Service, Finance, IT]
+    business_services: [Tracking Portal, Dispatch, Warehouse, Billing, Identity]
+    regulated_data: [customer PII]
+    archetypes: {compact_three_zone: 5, segmented_five_zone: 3, flat_small_office: 2}
+    name_words: [Caravan, Swift, Gulf, Meridian, Route, Anchor]
+    name_suffix: [Logistics, Freight, Express]
+
+sizes:
+  weights: {S: 5, M: 4, L: 1}
+  #: role -> [min, max] count. Workstations are REPRESENTATIVES (population_size carries the headcount).
+  roles:
+    S:
+      web_server: [1, 1]
+      app_server: [1, 1]
+      database: [1, 1]
+      dns_server: [1, 1]
+      directory: [0, 1]
+      file_server: [0, 1]
+      mail_server: [0, 1]
+      backup_server: [0, 1]
+      siem: [1, 1]
+      workstation: [1, 2]
+      admin_workstation: [1, 1]
+      bastion: [0, 0]
+    M:
+      web_server: [1, 2]
+      app_server: [1, 2]
+      database: [1, 2]
+      dns_server: [1, 1]
+      directory: [1, 1]
+      file_server: [1, 1]
+      mail_server: [0, 1]
+      backup_server: [0, 1]
+      siem: [1, 1]
+      workstation: [2, 2]
+      admin_workstation: [1, 1]
+      bastion: [1, 1]
+    L:
+      web_server: [2, 3]
+      app_server: [2, 3]
+      database: [2, 2]
+      dns_server: [1, 2]
+      directory: [1, 1]
+      file_server: [1, 1]
+      mail_server: [1, 1]
+      backup_server: [1, 1]
+      siem: [1, 1]
+      workstation: [2, 3]
+      admin_workstation: [1, 2]
+      bastion: [1, 1]
+  #: Real headcount represented by each workstation container.
+  population: {S: [10, 40], M: [40, 200], L: [200, 800]}
+  #: Human identities in the directory.
+  identities: {S: [8, 15], M: [20, 40], L: [40, 80]}
+  #: Container budget (laptop lane cap is 20).
+  container_cap: {S: 14, M: 20, L: 26}
+
+maturity:
+  weights: {low: 1, medium: 1, high: 1}
+  mfa_probability: {low: 0.2, medium: 0.6, high: 0.95}
+  agent_coverage:
+    servers: {low: 0.75, medium: 0.9, high: 1.0}
+    workstations: {low: 0.6, medium: 0.85, high: 0.95}
+  extra_allow_rules: {low: [1, 3], medium: [0, 1], high: [0, 0]}
+  weakness_count: {low: [3, 6], medium: [1, 4], high: [0, 2]}
+  tls_probability: {low: 0.4, medium: 0.75, high: 0.95}
+
+timezones: [Asia/Dubai, Asia/Riyadh, Europe/London, Europe/Berlin, America/New_York, Asia/Singapore]
+
+calendar:
+  #: Enrichment snapshot date. Calendars are anchored 6-18 months before it (INPUT Part 2, B8).
+  intel_snapshot_date: 2026-11-01
+  anchor_months_before: [6, 18]
+  horizon_days: [30, 90]
+  episodes: [2, 3]
+  observe_minutes: 10

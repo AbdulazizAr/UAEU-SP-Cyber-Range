@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-groups
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Types
+        run: uv run mypy
+      - name: Architecture (real-clock ban, import boundaries)
+        run: uv run python -m iris.devtools.boundaries src
+      - name: Tests
+        run: uv run pytest
+      - name: Doctests
+        run: uv run python -m doctest src/iris/core/vclock.py
+      - name: Example specs validate
+        run: uv run iris spec validate examples/*.spec.yaml
