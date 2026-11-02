@@ -1,17 +1,16 @@
-# Wazuh agent base layer (Layer 3 of the image model), Debian 12, libfaketime available.
+# Wazuh agent base layer (Layer 3 of the image model), Debian 12.
 FROM debian:12-slim
 
 ARG WAZUH_VERSION=4.14.9-1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps libfaketime \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps \
  && curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg \
  && echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
       > /etc/apt/sources.list.d/wazuh.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends wazuh-agent=${WAZUH_VERSION} \
- && rm -rf /var/lib/apt/lists/* \
- && ln -s "$(ls /usr/lib/*/faketime/libfaketime.so.1 | head -1)" /usr/local/lib/libfaketime.so.1
+ && rm -rf /var/lib/apt/lists/*
 
 # Keep FIM small and compressed (INPUT Part 3, 6.4): /etc only, every 5 minutes.
 RUN perl -0pi -e 's#<frequency>43200</frequency>#<frequency>300</frequency>#' /var/ossec/etc/ossec.conf \

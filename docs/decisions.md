@@ -56,7 +56,15 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
 - Wazuh manager and agents **4.14.9-1** (Debian 12 packages, manager-only in generation mode, JSON archives on, indexer and vulnerability detector off).
 - Suricata **8.0.6** (`jasonish/suricata:8.0.6` for the spike; our own image later). Digests replace tags once P1 passes.
 - Trivy **0.76.1** (`aquasec/trivy:0.76.1`), see Posture.
-- libfaketime from Debian 12, preloaded through the container environment; offset string in plain seconds; monotonic clock never faked.
+- **No libfaketime.** Live episodes run on the real clock; every record is moved by one constant per-episode offset at export (`iris.generator.retime` for Wazuh, `iris.generator.eve.shift_event` for Suricata). See P1 results.
+
+## P1 results (2026-11-02, laptop, Docker 29.1.3)
+
+- **Virtual time:** with libfaketime preloaded, no Wazuh 4.14 manager daemon starts, and nothing is logged. This happens at every offset, including +0, with both Debian's 0.9.10 and 0.9.12 built from source. Decision: capture on the real clock and shift at export. Intervals are preserved exactly, so frequency rules are unaffected. Syslog stamps inside `full_log` and `predecoder.timestamp` are rewritten (the year is inferred from the record time), and so are ISO-8601 stamps.
+- **Wazuh readiness** means these six daemons are running: analysisd, remoted, authd, wazuh-db, monitord, modulesd. Others (clusterd, maild, agentlessd, integratord, dbd, csyslogd) are off by default and always report "not running".
+- **Cold start:** the agent restarts once after the manager pushes shared config, and log lines written during that restart are skipped. Canaries are therefore re-emitted until seen, both in the spikes and in the deploy health gate.
+- **Network:** a router container between Docker bridges works on Docker 29.1.3 in every mode tried (internal, nat, nat-unprotected, routed), so the compiler keeps `internal: true`. Earlier failures were in the spike itself: `fwd` is an nftables keyword, and `python3-minimal` has no `http.server`.
+- **Suricata:** one sensor in the router namespace sees each forwarded flow on both interfaces. De-duplication by community_id leaves exactly one record per connection. Kernel drops are 0.
 
 ## Generator (P2)
 

@@ -3,10 +3,11 @@
 Measures and checks, on the pinned Wazuh version:
 
 1. manager boot time and RAM; agent enrolment/connect time and RAM;
-2. libfaketime offset mode: alerts and archives carry VIRTUAL dates, and a frequency
-   correlation rule (sshd brute force, 5712) still fires;
+2. real-clock capture: a frequency correlation rule (sshd brute force, 5712) fires, and
+   the captured alerts shift cleanly into the virtual window (iris.generator.retime);
+   libfaketime was dropped: no Wazuh 4.14 daemon starts with it preloaded, at any offset;
 3. warm restart = next episode: containers recreated from the same state volumes with
-   the clock jumped 7 days forward. Agent IDs must survive, no replay-counter errors,
+   the virtual window 7 days later. Agent IDs must survive, no replay-counter errors,
    new alerts must land in the new virtual window; warm pre-roll time is measured.
 """
 
@@ -19,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from iris.core.vclock import EpisodeClock, iso_z, real_utc_now
+from iris.generator.retime import format_syslog, shift_wazuh
 from iris.spikes.common import (
     SpikeError,
     SpikeResult,
@@ -42,7 +44,6 @@ AGENTS = {"iris-spike-wazuh-agent1": "spike-web-01", "iris-spike-wazuh-agent2": 
 CANARY_AGENT = "iris-spike-wazuh-agent1"
 EXPECTED_RULES = {"5710", "5712", "5716", "5760", "5503", "5551"}
 BRUTE_FORCE_RULE = "5712"
-LIBFAKETIME = "/usr/local/lib/libfaketime.so.1"
 EPISODE_1 = datetime(2025, 3, 3, 5, 40, tzinfo=UTC)
 JUMP = timedelta(days=7)
 REPLAY_PATTERNS = ("invalid message", "counter", "rids", "error getting key", "duplicate", "already in use")
@@ -111,12 +112,6 @@ def error_lines(log: str, patterns: tuple[str, ...] = ("ERROR:", "CRITICAL:")) -
 
 
 # ---------------------------------------------------------------- live helpers
-
-
-def _env(clock: EpisodeClock | None) -> dict[str, str]:
-    if clock is None:
-        return {"FAKETIME": "", "IRIS_LD_PRELOAD": ""}
-    return {"FAKETIME": clock.faketime_spec(), "IRIS_LD_PRELOAD": LIBFAKETIME}
 
 
 #: Daemons generation mode needs. Others (clusterd, maild, agentlessd, integratord, dbd,
@@ -188,11 +183,10 @@ def _write_canary(lines: int = 12) -> None:
     docker_exec(CANARY_AGENT, cmd, timeout=60)
 
 
-def _episode(
-    result: SpikeResult, label: str, clock: EpisodeClock | None, window_start: datetime | None, cold: bool
-) -> None:
+def _episode(result: SpikeResult, label: str, window_start: datetime, cold: bool) -> None:
     t_up = time.monotonic()
-    compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "manager"], env=_env(clock))
+    real_start = real_utc_now()
+    compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "manager"])
     ok, secs = wait_until(_manager_ready, timeout=240)
     result.check(f"{label}.manager_ready", ok, secs, "required wazuh daemons running")
     result.measure(f"{label}.manager_ready_s", secs)
@@ -201,7 +195,7 @@ def _episode(
         raise SpikeError(f"{label}: manager did not come up (diagnostics in results.json)")
 
     t_agents = time.monotonic()
-    compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "agent1", "agent2"], env=_env(clock))
+    compose(PROJECT, spike_file("wazuh.compose.yml"), ["up", "-d", "agent1", "agent2"])
     ok, secs = wait_until(_agents_active, timeout=240)
     result.check(f"{label}.agents_active", ok, secs, "both agents Active")
     result.measure(f"{label}.agents_active_s", secs)
@@ -211,9 +205,16 @@ def _episode(
     before = {name: aid for name, (aid, _) in _agents().items()}
     result.measure(f"{label}.agent_ids", before)
 
-    since = (window_start - timedelta(minutes=10)) if window_start else None
-    _write_canary()
-    ok, secs = wait_until(lambda: bool(canary_alerts(_alerts(), AGENTS[CANARY_AGENT], since)), timeout=180)
+    since = real_start - timedelta(minutes=1)  # this episode's alerts only (real clock)
+    clock = EpisodeClock.for_observe_start(window_start, real_utc_now())  # observe starts now
+    # The canary is re-emitted until seen: on first enrolment the agent restarts once after
+    # the manager pushes shared config, and lines written during that restart are skipped.
+    t_canary = time.monotonic()
+    ok = False
+    while not ok and time.monotonic() - t_canary < 240:
+        _write_canary()
+        ok, _ = wait_until(lambda: bool(canary_alerts(_alerts(), AGENTS[CANARY_AGENT], since)), timeout=30)
+    secs = round(time.monotonic() - t_canary, 1)
     result.check(f"{label}.canary_alert", ok, secs, f"rules {sorted(EXPECTED_RULES)}")
     total = round(time.monotonic() - t_up, 1)
     result.measure(f"{label}.preroll_total_s", total)
@@ -228,20 +229,18 @@ def _episode(
     )
     result.check(f"{label}.correlation_rule_{BRUTE_FORCE_RULE}", ok_bf, None, "frequency rule fired")
 
-    alerts = canary_alerts(_alerts(), AGENTS[CANARY_AGENT], since)
-    if window_start is not None and alerts:
+    alerts = [shift_wazuh(a, clock.offset) for a in canary_alerts(_alerts(), AGENTS[CANARY_AGENT], since)]
+    if alerts:
         times = [alert_time(a) for a in alerts]
         lo, hi = min(times), max(times)
         in_window = all(
             window_start - timedelta(minutes=10) <= t <= window_start + timedelta(minutes=90) for t in times
         )
-        result.check(
-            f"{label}.alert_times_virtual", in_window, f"{iso_z(lo)} .. {iso_z(hi)}", "manager clock"
-        )
+        result.check(f"{label}.alert_times_shifted", in_window, f"{iso_z(lo)} .. {iso_z(hi)}", "export shift")
         pre = [a.get("predecoder", {}).get("timestamp", "") for a in alerts]
-        want = window_start.strftime("%b %e").replace("  ", " ")
-        same_day = all(" ".join(p.split()[:2]) == want for p in pre if p)
-        result.check(f"{label}.log_line_times_virtual", same_day, pre[:2], "timestamp inside the log line")
+        want = format_syslog(window_start)[:6]
+        same_day = all(p[:6] == want for p in pre if p)
+        result.check(f"{label}.log_line_times_shifted", same_day, pre[:2], "syslog stamp inside the log line")
     archives = docker_exec(
         MANAGER,
         "grep -c 'Failed password for invalid user' /var/ossec/logs/archives/archives.json",
@@ -255,11 +254,11 @@ def _episode(
         result.measure("cold_start", True)
 
 
-def run(build: bool = True, keep: bool = False, faketime: bool = True) -> SpikeResult:
+def run(build: bool = True, keep: bool = False) -> SpikeResult:
     run_dir = new_run_dir("wazuh")
     result = SpikeResult("wazuh", iso_z(real_utc_now()))
     result.measure("run_dir", str(run_dir))
-    result.measure("faketime", faketime)
+    result.measure("clock", "real; shifted at export")
     try:
         require_docker()
         for tag, ctx in (
@@ -271,8 +270,7 @@ def run(build: bool = True, keep: bool = False, faketime: bool = True) -> SpikeR
         compose(PROJECT, spike_file("wazuh.compose.yml"), ["down", "-v", "--remove-orphans"])
 
         # Episode 1: cold start (enrolment happens here).
-        clock1 = EpisodeClock.for_observe_start(EPISODE_1, real_utc_now()) if faketime else None
-        _episode(result, "ep1", clock1, EPISODE_1 if faketime else None, cold=True)
+        _episode(result, "ep1", EPISODE_1, cold=True)
         ids1 = result.measurements["ep1.agent_ids"]
         log1 = docker_exec(MANAGER, "cat /var/ossec/logs/ossec.log", check=False)
         (run_dir / "ep1_manager_ossec.log").write_text(log1)
@@ -283,8 +281,7 @@ def run(build: bool = True, keep: bool = False, faketime: bool = True) -> SpikeR
         compose(PROJECT, spike_file("wazuh.compose.yml"), ["stop", "-t", "30"])
         compose(PROJECT, spike_file("wazuh.compose.yml"), ["rm", "-f"])
         ep2 = EPISODE_1 + JUMP
-        clock2 = EpisodeClock.for_observe_start(ep2, real_utc_now()) if faketime else None
-        _episode(result, "ep2", clock2, ep2 if faketime else None, cold=False)
+        _episode(result, "ep2", ep2, cold=False)
         ids2 = result.measurements["ep2.agent_ids"]
         result.check("ep2.agent_ids_stable", ids1 == ids2, {"ep1": ids1, "ep2": ids2})
         log2 = docker_exec(MANAGER, "cat /var/ossec/logs/ossec.log", check=False)

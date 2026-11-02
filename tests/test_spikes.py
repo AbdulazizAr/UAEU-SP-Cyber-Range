@@ -142,7 +142,7 @@ def test_spike_compose_files_parse():
         data = yaml.safe_load((ROOT / "spikes" / name).read_text())
         assert "services" in data
     wazuh = yaml.safe_load((ROOT / "spikes" / "wazuh.compose.yml").read_text())
-    assert wazuh["services"]["agent1"]["environment"]["FAKETIME_DONT_FAKE_MONOTONIC"] == "1"
+    assert "FAKETIME" not in json.dumps(wazuh)
 
 
 def test_manager_ready_ignores_disabled_daemons():
@@ -166,3 +166,16 @@ def test_nft_rules_avoid_reserved_words():
 
     for rule in NFT_RULES:
         assert " fwd " not in f" {rule} "  # 'fwd' is an nftables keyword (netdev forwarding)
+
+
+def test_network_modes_compose_docs():
+    import yaml
+
+    from iris.spikes.network import NETWORK_MODES, compose_doc
+
+    for mode in NETWORK_MODES:
+        doc = yaml.safe_load(yaml.safe_dump(compose_doc(mode)))
+        assert set(doc["services"]) == {"router", "client", "server"}
+        for net in doc["networks"].values():
+            assert net["ipam"]["config"][0]["gateway"].endswith(".254")
+    assert compose_doc("internal")["networks"]["zone_a"]["internal"] is True

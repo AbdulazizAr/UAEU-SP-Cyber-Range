@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from iris.core.vclock import iso_z, real_utc_now
 from iris.generator.eve import dedup, kernel_drops, parse_eve_ts, shift_event
 from iris.spikes.common import (
@@ -57,6 +59,53 @@ NFT_RULES = [
     "add rule inet iris forward_filter ip saddr 10.99.1.0/24 ip daddr 10.99.2.0/24 tcp dport 8080 accept",
     "add rule inet iris forward_filter icmp type echo-request accept",
 ]
+
+#: Docker 28+ drops "direct-routed" packets (dst = a container IP arriving from another
+#: interface) in raw PREROUTING, which breaks a router container between bridges: the
+#: reply leg is dropped. Each mode below is tried; the first that passes is used for the
+#: full checks, and the result decides the compiler's network settings.
+NETWORK_MODES: dict[str, dict[str, Any]] = {
+    "internal": {"internal": True},  # what the compiler uses: tried first
+    "nat": {},
+    "nat-unprotected": {"driver_opts": {"com.docker.network.bridge.gateway_mode_ipv4": "nat-unprotected"}},
+    "routed": {"driver_opts": {"com.docker.network.bridge.gateway_mode_ipv4": "routed"}},
+}
+
+
+def compose_doc(mode: str) -> dict[str, Any]:
+    extra = NETWORK_MODES[mode]
+    node = {"image": "iris/netbox:spike", "cap_add": ["NET_ADMIN"]}
+    nets = {
+        name: {"ipam": {"config": [{"subnet": f"10.99.{n}.0/24", "gateway": f"10.99.{n}.254"}]}, **extra}
+        for name, n in (("zone_a", 1), ("zone_b", 2))
+    }
+    return {
+        "services": {
+            "router": {
+                **node,
+                "container_name": ROUTER,
+                "sysctls": {"net.ipv4.ip_forward": "1"},
+                "networks": {
+                    "zone_a": {"ipv4_address": "10.99.1.1"},
+                    "zone_b": {"ipv4_address": "10.99.2.1"},
+                },
+            },
+            "client": {**node, "container_name": CLIENT, "networks": {"zone_a": {"ipv4_address": CLIENT_IP}}},
+            "server": {
+                **node,
+                "container_name": SERVER,
+                "command": [
+                    "sh",
+                    "-c",
+                    "python3 -m http.server 8080 >/tmp/http.log 2>&1 & "
+                    "nc -lk 9090 >/tmp/nc9090.log 2>&1 & sleep infinity",
+                ],
+                "networks": {"zone_b": {"ipv4_address": SERVER_IP}},
+            },
+        },
+        "networks": nets,
+    }
+
 
 _ADDR = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/")
 
@@ -135,12 +184,69 @@ def _sensor_started() -> bool:
     return "engine started" in text
 
 
+def _up(run_dir: Path, mode: str) -> Path:
+    cfile = run_dir / f"compose-{mode}.yml"
+    cfile.write_text(yaml.safe_dump(compose_doc(mode), sort_keys=False))
+    compose(PROJECT, cfile, ["down", "-v", "--remove-orphans"])
+    compose(PROJECT, cfile, ["up", "-d"])
+    for rule in NFT_RULES:
+        docker_exec(ROUTER, f"nft '{rule}'")
+    docker_exec(CLIENT, "ip route replace 10.99.2.0/24 via 10.99.1.1")
+    docker_exec(SERVER, "ip route replace 10.99.1.0/24 via 10.99.2.1")
+    ok, _ = wait_until(lambda: ":8080" in docker_exec(SERVER, "ss -ltn", check=False), timeout=30, interval=1)
+    if not ok:
+        log = docker_exec(SERVER, "cat /tmp/http.log", check=False)
+        raise SpikeError(f"test web server is not listening on 8080: {log.strip()[:300]}")
+    return cfile
+
+
+def _http_codes(n: int) -> list[str]:
+    return docker_exec(
+        CLIENT,
+        f"for i in $(seq 1 {n}); do curl -s -o /dev/null -w '%{{http_code}}\\n' --max-time 5 "
+        f"http://{SERVER_IP}:8080/; sleep 1; done",
+        timeout=20 + 7 * n,
+        check=False,
+    ).split()
+
+
+def _diagnostics(run_dir: Path, mode: str) -> None:
+    lines = []
+    for c in (CLIENT, ROUTER, SERVER):
+        lines.append(f"## {c}: ip route\n" + docker_exec(c, "ip route", check=False))
+    lines.append("## router: nft list ruleset\n" + docker_exec(ROUTER, "nft list ruleset", check=False))
+    lines.append("## client: ping server\n" + docker_exec(CLIENT, f"ping -c 2 -W 2 {SERVER_IP}", check=False))
+    (run_dir / f"diag-{mode}.txt").write_text("\n".join(lines))
+
+
+def probe_modes(run_dir: Path, result: SpikeResult) -> str | None:
+    """Try each network mode with 2 HTTP requests; return the first that routes."""
+    chosen: str | None = None
+    outcome: dict[str, list[str]] = {}
+    for mode in NETWORK_MODES:
+        try:
+            cfile = _up(run_dir, mode)
+        except SpikeError as exc:
+            outcome[mode] = [f"error: {str(exc).splitlines()[0][:120]}"]
+            continue
+        codes = _http_codes(2)
+        outcome[mode] = codes
+        if codes.count("200") == 2:
+            chosen = chosen or mode
+        else:
+            _diagnostics(run_dir, mode)
+        compose(PROJECT, cfile, ["down", "-v", "--remove-orphans"])
+    result.measure("network_modes", outcome)
+    result.check("network.some_mode_routes", chosen is not None, chosen, "first mode with HTTP 200 x2")
+    return chosen
+
+
 def run(build: bool = True, keep: bool = False, suricata_image: str = DEFAULT_SURICATA_IMAGE) -> SpikeResult:
     run_dir = new_run_dir("network")
     result = SpikeResult("network", iso_z(real_utc_now()))
     result.measure("run_dir", str(run_dir))
     result.measure("suricata_image", suricata_image)
-    cfile = spike_file("network.compose.yml")
+    cfile = spike_file("network.compose.yml")  # replaced by the generated file of the chosen mode
     try:
         require_docker()
         if build or not image_exists("iris/netbox:spike"):
@@ -149,13 +255,11 @@ def run(build: bool = True, keep: bool = False, suricata_image: str = DEFAULT_SU
         sh(["docker", "pull", suricata_image], timeout=900)
         result.measure("pull_s.suricata", round(time.monotonic() - t0, 1))
         sh(["docker", "rm", "-f", SENSOR], check=False)
-        compose(PROJECT, cfile, ["down", "-v", "--remove-orphans"])
-        compose(PROJECT, cfile, ["up", "-d"])
-
-        for rule in NFT_RULES:
-            docker_exec(ROUTER, f"nft '{rule}'")
-        docker_exec(CLIENT, "ip route replace 10.99.2.0/24 via 10.99.1.1")
-        docker_exec(SERVER, "ip route replace 10.99.1.0/24 via 10.99.2.1")
+        mode = probe_modes(run_dir, result)
+        if mode is None:
+            raise SpikeError("no Docker network mode routes between zones; see diag-*.txt in the run dir")
+        cfile = _up(run_dir, mode)
+        result.measure("network_mode", mode)
         ifaces = parse_interfaces(docker_exec(ROUTER, "ip -o -4 addr show"))
         result.measure("router_interfaces", ifaces)
         if len(ifaces) < 2:
@@ -179,12 +283,7 @@ def run(build: bool = True, keep: bool = False, suricata_image: str = DEFAULT_SU
             raise SpikeError("suricata did not start; see sensor logs in run dir")
         time.sleep(3)
 
-        codes = docker_exec(
-            CLIENT,
-            f"for i in $(seq 1 {HTTP_REQUESTS}); do curl -s -o /dev/null -w '%{{http_code}}\\n' --max-time 5 "
-            f"http://{SERVER_IP}:8080/; sleep 1; done",
-            timeout=60,
-        ).split()
+        codes = _http_codes(HTTP_REQUESTS)
         result.check("path.allowed_http_200", codes.count("200") == HTTP_REQUESTS, codes)
         rc = docker_exec(CLIENT, f"nc -z -w 3 {SERVER_IP} 9090; echo $?", timeout=30, check=False).strip()
         server_seen = docker_exec(SERVER, "cat /tmp/nc9090.log", check=False).strip()

@@ -80,7 +80,7 @@ def test_episode_clock_offset_maps_observe_start_exactly():
     assert ec.to_virtual(real) == T0
     assert ec.to_virtual(real + timedelta(minutes=5)) == T0 + timedelta(minutes=5)
     assert ec.to_real(T0) == real
-    assert ec.faketime_spec().startswith("-")
+    assert ec.offset_seconds() < 0
 
 
 # ---------------------------------------------------------------- seeds

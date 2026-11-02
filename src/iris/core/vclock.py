@@ -178,11 +178,9 @@ class EpisodeClock:
         """Current virtual time during a live episode."""
         return self.to_virtual(real_utc_now())
 
-    def faketime_spec(self) -> str:
-        """libfaketime relative-offset string in seconds (offset mode, no speed multiplier)."""
-        seconds = int(self.offset.total_seconds())
-        sign = "+" if seconds >= 0 else "-"
-        return f"{sign}{abs(seconds)}"
+    def offset_seconds(self) -> float:
+        """The export shift in seconds (negative when the virtual date is in the past)."""
+        return self.offset.total_seconds()
 
 
 def validate_episode_sequence(windows: list[EpisodeWindow], min_gap: timedelta = timedelta(0)) -> None:

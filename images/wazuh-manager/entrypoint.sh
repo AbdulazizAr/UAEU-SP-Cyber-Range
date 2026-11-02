@@ -1,12 +1,6 @@
 #!/bin/bash
-# Starts the Wazuh manager. Virtual time: when FAKETIME is set in the container
-# environment, LD_PRELOAD (also set in the environment) makes every daemon and every
-# `docker exec` process see the shifted clock. Monotonic time is never faked.
+# Starts the Wazuh manager on the real clock (records are shifted into virtual time at export).
 set -euo pipefail
-
-if [ -n "${FAKETIME:-}" ]; then
-  echo "virtual time: FAKETIME=${FAKETIME} -> $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-fi
 
 mkdir -p /var/ossec/logs/alerts /var/ossec/logs/archives
 # Do not let one optional daemon (e.g. the API) kill the container: report and keep going.

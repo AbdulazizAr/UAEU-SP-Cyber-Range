@@ -92,12 +92,12 @@ uv run iris eval d6 <package> --decisions /tmp/dec.jsonl
 ## P1 spikes (need Docker + internet, about 15-25 minutes the first time)
 
 ```bash
-uv run iris spike wazuh      # boot/RAM, virtual dates via libfaketime, correlation, warm restart + clock jump
+uv run iris spike wazuh      # boot/RAM, correlation, export time shift, warm restart into a later window
 uv run iris spike network    # router + Suricata in the router namespace, duplicates, dedup, drops, time shift
 uv run iris spike all
 ```
 
-Each run prints pass/fail per check and writes `results.json` plus logs to `$IRIS_DATA/runs/spikes/<stamp>-<name>/`. `--keep` leaves the containers up for inspection; `--no-build` reuses images; `iris spike wazuh --no-faketime` is the real-time baseline.
+Each run prints pass/fail per check and writes `results.json` plus logs to `$IRIS_DATA/runs/spikes/<stamp>-<name>/`. `--keep` leaves the containers up for inspection; `--no-build` reuses images; Virtual time is applied at export (no libfaketime): see docs/decisions.md, P1 results.
 
 ## Reference notes
 

@@ -31,7 +31,6 @@ WAZUH_IMAGE = "iris/wazuh-manager:4.14.9-1"
 SURICATA_IMAGE = "jasonish/suricata:8.0.6"
 ROUTER_IMAGE = "iris/router:0.1.0"
 EXTERNAL_IMAGE = "iris/external:0.1.0"
-LIBFAKETIME = "/usr/local/lib/libfaketime.so.1"
 
 #: Planning estimates (MiB) per container; replaced by P1/P2 measurements.
 MEM_MIB: dict[str, int] = {
@@ -53,11 +52,9 @@ MEM_MIB: dict[str, int] = {
     "external": 64,
 }
 
-VIRTUAL_TIME_ENV = {
-    "FAKETIME": "${FAKETIME:-}",
-    "LD_PRELOAD": "${IRIS_LD_PRELOAD:-}",
-    "FAKETIME_DONT_FAKE_MONOTONIC": "1",
-}
+#: Containers run on the real clock; records are moved into virtual time at export
+#: (iris.generator.retime, iris.generator.eve). libfaketime breaks Wazuh 4.14 (P1).
+VIRTUAL_TIME = {"mode": "real-time capture, constant per-episode shift at export"}
 
 
 @dataclass
@@ -201,13 +198,12 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
             svc.update(
                 image=WAZUH_IMAGE,
                 cap_add=["NET_ADMIN"],
-                environment={**VIRTUAL_TIME_ENV, "IRIS_GATEWAY": router_ip[a.attachments[0].zone]},
+                environment={"IRIS_GATEWAY": router_ip[a.attachments[0].zone]},
                 volumes=[f"{vol}:/var/ossec"],
             )
         else:
             image = node_image(spec, a.asset_id, a.role, a.os_profile)
             env: dict[str, str] = {
-                **VIRTUAL_TIME_ENV,
                 "IRIS_GATEWAY": router_ip[a.attachments[0].zone],
                 "IRIS_ROLE": a.role.value,
                 "IRIS_SERVICES": ",".join(
@@ -239,7 +235,6 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
             "networks": {net_key[ext.zone]: {"ipv4_address": ext.ip}},
             "cap_add": ["NET_ADMIN"],
             "environment": {
-                **VIRTUAL_TIME_ENV,
                 "IRIS_GATEWAY": router_ip[ext.zone],
                 "IRIS_EXTERNAL_KIND": ext.kind,
             },
@@ -269,6 +264,6 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
             "capture": "all router interfaces (resolved at deploy)",
             "dedup": "community_id + event_type + signature within 1 s",
         },
-        "virtual_time": {"libfaketime": LIBFAKETIME, "monotonic_faked": False},
+        "virtual_time": VIRTUAL_TIME,
     }
     return CompiledRange(project=project, compose=compose, router_nft=render_nft(spec), meta=meta)

@@ -706,12 +706,11 @@ def spike() -> None:
 @spike.command("wazuh")
 @click.option("--no-build", is_flag=True, help="Reuse existing images.")
 @click.option("--keep", is_flag=True, help="Leave containers running for inspection.")
-@click.option("--no-faketime", is_flag=True, help="Baseline run on real time.")
-def spike_wazuh(no_build: bool, keep: bool, no_faketime: bool) -> None:
-    """Wazuh boot/RAM, libfaketime virtual dates, correlation, warm restart with clock jump."""
+def spike_wazuh(no_build: bool, keep: bool) -> None:
+    """Wazuh boot/RAM, correlation, export time shift, warm restart into a later window."""
     from iris.spikes import wazuh
 
-    result = wazuh.run(build=not no_build, keep=keep, faketime=not no_faketime)
+    result = wazuh.run(build=not no_build, keep=keep)
     _report(result)
     sys.exit(0 if result.passed else 1)
 
