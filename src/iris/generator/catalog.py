@@ -29,6 +29,7 @@ class Catalog:
     first_names: list[str]
     last_names: list[str]
     versions: dict[str, str]
+    live: dict[str, Any]
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -44,6 +45,7 @@ def load_catalog(root: Path | None = None) -> Catalog:
     rec = _load(base / "recipes.yaml")
     wk = _load(base / "weaknesses.yaml")
     names = _load(base / "names.yaml")
+    live = _load(base / "live.yaml")
     return Catalog(
         archetypes=arch["archetypes"],
         industries=ind["industries"],
@@ -65,5 +67,7 @@ def load_catalog(root: Path | None = None) -> Catalog:
             "recipes": rec["catalog_version"],
             "weaknesses": wk["catalog_version"],
             "names": names["catalog_version"],
+            "live": live["catalog_version"],
         },
+        live=live,
     )

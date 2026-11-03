@@ -1,0 +1,34 @@
+# Live build matrix (P2): what the live range can actually build and run today.
+# `iris gen spec --live` and `iris range up` sample only inside this matrix. The full
+# catalog (other OSes, recipe versions, roles) joins as images land (P7: 12+ recipes,
+# 6 archetypes, vendor repositories for other versions).
+catalog_version: "0.1.0"
+
+os_profile: debian-12
+archetype: compact_three_zone
+size: S
+
+#: recipe -> version label of what Debian 12 ships (PostgreSQL: major line; the exact
+#: installed versions are recorded by the image build and the scanner).
+recipes:
+  nginx: "1.22.1"
+  openssh: "9.2p1"
+  postgresql: "15"
+  unbound: "1.17.1"
+  flask_shop: "0.3.0"
+  wazuh_manager: "4.14.9"
+
+#: weakness modules the live images realise and the health gate verifies.
+weaknesses:
+  - web.sqli_login
+  - web.path_traversal
+  - web.idor_object
+  - web.privilege_update
+  - web.admin_exposed
+  - tls.weak_config
+  - auth.ssh_password
+  - auth.ssh_root_login
+  - auth.shared_ssh_key
+  - host.sudo_nopasswd
+  - db.default_creds
+  - db.listen_all

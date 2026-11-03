@@ -21,7 +21,7 @@ from __future__ import annotations
 import ipaddress
 import random
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -117,6 +117,7 @@ class SampleOverrides:
     size: str | None = None
     maturity: str | None = None
     archetype: str | None = None
+    live: bool = False  # stay inside the live build matrix (configs/catalog/live.yaml)
 
 
 def _weighted(rng: random.Random, weights: dict[str, float]) -> str:
@@ -234,6 +235,9 @@ def sample_spec(
 ) -> ScenarioSpec:
     cat = catalog or load_catalog()
     ov = overrides or SampleOverrides()
+    live = cat.live if ov.live else None
+    if live is not None:
+        ov = replace(ov, archetype=ov.archetype or live["archetype"], size=ov.size or live["size"])
     org = _sample_org(seeds, cat, ov)
 
     # ---- topology
@@ -244,6 +248,10 @@ def sample_spec(
     zone_kinds = {z: arch.get("zone_kinds", {}).get(z, z) for z in zone_names}
     subnets = _zone_subnets(seeds.stream("topology", "ip_plan"), zone_names)
     role_zone: dict[str, str] = arch["role_zone"]
+    if live is not None:  # only roles whose every service has a live image
+        role_zone = {
+            r: z for r, z in role_zone.items() if all(rc in live["recipes"] for rc in cat.role_services[r])
+        }
 
     ext_rng = seeds.stream("topology", "externals")
     externals_plan = [("client", n) for n in range(1, ext_rng.randint(1, 2) + 1)] + [("attacker", 1)]
@@ -310,7 +318,7 @@ def sample_spec(
                     "asset_id": aid,
                     "hostname": hostname(role, n),
                     "role": role,
-                    "os_profile": os_rng.choice(cat.os_profiles[kind]),
+                    "os_profile": live["os_profile"] if live else os_rng.choice(cat.os_profiles[kind]),
                     "attachments": [{"zone": role_zone[role], "ip": ip_of[(role, n)]}],
                     "data_class": data_class,
                     "internet_exposed": role_zone[role] == "dmz"
@@ -331,7 +339,7 @@ def sample_spec(
                     service_id=f"SVC-{code}-{svc_counter[code]:03d}",
                     asset_id=aid,
                     recipe=recipe,
-                    version=str(srng.choice(rec["versions"])),
+                    version=str(live["recipes"][recipe]) if live else str(srng.choice(rec["versions"])),
                     port=port,
                     protocol=rec["protocol"],
                     tls=tls,
@@ -450,7 +458,7 @@ def sample_spec(
         seeds, cat, mat, zone_names, zone_kinds, role_zone, counts, services, svc_asset, asset_specs
     )
     identities = _sample_identities(seeds, cat, org, asset_specs, services)
-    weaknesses = _sample_weaknesses(seeds, cat, mat, services)
+    weaknesses = _sample_weaknesses(seeds, cat, mat, services, set(live["weaknesses"]) if live else None)
     calendar, episodes = _sample_time(seeds, cat, org.spec.timezone)
 
     return ScenarioSpec(
@@ -617,7 +625,11 @@ def _sample_identities(
 
 
 def _sample_weaknesses(
-    seeds: SeedSet, cat: Catalog, maturity: str, services: list[ServiceSpec]
+    seeds: SeedSet,
+    cat: Catalog,
+    maturity: str,
+    services: list[ServiceSpec],
+    allowed: set[str] | None = None,
 ) -> list[WeaknessSpec]:
     rng = seeds.stream("weakness", "plant")
     target = _between(rng, cat.maturity["weakness_count"][maturity])
@@ -626,6 +638,8 @@ def _sample_weaknesses(
         for module_id, mod in sorted(cat.weaknesses.items())
         for svc in services
         if svc.recipe == mod["recipe"]
+        and (allowed is None or module_id in allowed)
+        and (mod.get("requires") != "tls" or svc.tls)
     ]
     chosen: list[tuple[str, ServiceSpec]] = []
     used: set[tuple[str, str]] = set()

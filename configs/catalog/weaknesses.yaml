@@ -1,7 +1,7 @@
 # Weakness modules v0 (INPUT Part 1, 3.4). Kind A (version CVEs) comes from installed
 # versions and the scanner, so it is not sampled here. Each module names the control whose
 # absence enables it (the causal-control truth used by the oracle for D4).
-catalog_version: "0.1.0"
+catalog_version: "0.2.0"  # 0.2.0: `requires: tls` (weak TLS only on services that serve TLS)
 
 modules:
   web.sqli_login:        {kind: C, recipe: flask_shop, control: CTRL-APP-001, cwe: CWE-89, attackable: true, weight: 3}
@@ -9,7 +9,7 @@ modules:
   web.idor_object:       {kind: C, recipe: flask_shop, control: CTRL-APP-002, cwe: CWE-639, attackable: true, weight: 2}
   web.privilege_update:  {kind: C, recipe: flask_shop, control: CTRL-APP-002, cwe: CWE-269, attackable: true, weight: 1}
   web.admin_exposed:     {kind: B, recipe: nginx, control: CTRL-NET-003, cwe: CWE-284, attackable: true, weight: 1}
-  tls.weak_config:       {kind: B, recipe: nginx, control: CTRL-CRY-001, cwe: CWE-326, attackable: false, weight: 2}
+  tls.weak_config:       {kind: B, recipe: nginx, control: CTRL-CRY-001, cwe: CWE-326, attackable: false, weight: 2, requires: tls}
   auth.ssh_password:     {kind: B, recipe: openssh, control: CTRL-IAM-002, cwe: CWE-287, attackable: true, weight: 3}
   auth.ssh_root_login:   {kind: B, recipe: openssh, control: CTRL-IAM-004, cwe: CWE-250, attackable: true, weight: 1}
   auth.shared_ssh_key:   {kind: B, recipe: openssh, control: CTRL-IAM-005, cwe: CWE-798, attackable: true, weight: 1}

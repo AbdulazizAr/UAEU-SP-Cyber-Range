@@ -132,6 +132,35 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
   These numbers confirm the detectability classes behave as designed. The learned D6 model must beat this baseline, mainly on DC2.
 - **Import boundaries added:** the Engine may not import the packager or `iris.references.intel` (current intel would leak the future), the evaluator scores key files without importing the generator, and the oracle never imports the evaluator.
 
+## Live range (P2, part 2)
+
+- **Live build matrix** (`configs/catalog/live.yaml`, used by `SampleOverrides(live=True)`): Debian 12, compact three-zone archetype, size S.
+  - Recipes, at the versions Debian 12 ships: nginx 1.22.1, OpenSSH 9.2p1, PostgreSQL 15 (major line; exact versions are recorded in the image and by the scanner), Unbound 1.17.1, the shop app 0.3.0, Wazuh 4.14.9.
+  - Roles are kept only when every service they need has an image, so mail, directory, file and backup servers wait for P7.
+  - Weaknesses come only from the 12 modules the images realise.
+- **One node image** (`images/node/debian-12`) for every role, with a `RECIPES` build argument per compiler image tag.
+  - Packages come from the distribution, so the scanner sees them.
+  - The base layers, including a vendor deploy key, are shared by every node built on a machine, which is what makes `auth.shared_ssh_key` a real shared key.
+  - Configuration arrives only as environment variables written by the compiler (`node_env`): services, upstreams, database clients, users, planted weaknesses, DNS records. `node-init` logs every step as `ok` or `FAIL`.
+- **Real weaknesses:** sshd password and root login, the shared key, NOPASSWD sudo, the postgres default password, pg_hba open to all, nginx `/admin` exposed, weak TLS. The shop app switches its SQL injection, path traversal, IDOR and role-update flaws by configuration, so unplanted flaws are really absent.
+- **Credentials** (`iris.generator.secrets`): deterministic per scenario, 20-character random passwords. A weakness makes the matching credential weak, using a short list of common passwords (for example `postgres/postgres`). They exist only in the run directory and hidden truth.
+- **DNS:** each enterprise has its own resolver (Unbound) with `<org>.lan` A and PTR records. Nodes write `resolv.conf` themselves, so Docker's embedded DNS (and container names) never answer.
+- **Routing:** the router container has no default route and loads `router.nft`. The Wazuh manager image gained `iproute2` to route back to agents in other zones through the router.
+- **Health gate (`iris.live.health`)**, run during the hidden pre-roll:
+  - containers running, init finished with no failed step;
+  - router policy loaded and no default route;
+  - every port listening, internal DNS resolving, app reaching its database;
+  - internet to web allowed and internet to database blocked, no egress to a public IP;
+  - Wazuh manager ready, monitored agents Active and blind spots without an agent;
+  - a syslog canary per agent arrives in the archives;
+  - Suricata sees the canary HTTP/TLS exactly once after de-duplication;
+  - every planted weakness verified, and spot checks prove unplanted ones absent.
+- **Run-scoped teardown:** every container, network and volume carries `iris.project`. Teardown saves container logs, then proves no labelled object is left. A run refuses to start while another iris project exists on the lane. Each run is driven by the state machine PLANNED → BUILDING → DEPLOYING → CHECKING → HEALTHY/UNHEALTHY → TEARING_DOWN → TORN_DOWN (or KEPT/FAILED), recorded in `state.json`.
+- **P2 exit gate:** `iris range gate --count 20` must deploy, pass health and tear down cleanly for 20 seeds in a row. Seeds whose subnets overlap Docker networks already on the machine are reported as `SKIPPED_CONFLICT` (a lane problem). Lane machines should set Docker `default-address-pools` to 10.200.0.0/14, which the sampler already avoids.
+- **First gate run (2026-11-03):** 16/20 passed.
+  - Two failures had weak TLS planted on non-TLS websites. Fixed: the weakness catalog now has `requires: tls`, catalog version 0.2.0.
+  - Two collided with other Docker projects' 172.18 and 172.21 networks. These are now detected before deploy.
+
 ## Addressing
 
 - Docker's bridge occupies the **last usable address** of every zone subnet (.254 in a /24). The spec validator rejects any asset or gateway on it; zone gateways (our router) use .1.

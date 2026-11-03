@@ -79,6 +79,29 @@ uv run iris posture build --master 42 --out /tmp/p42   # GRC + timeline + postur
 
 Catalogs (archetypes, industries, recipes, weaknesses, names) live in `configs/catalog/` and are documented assumptions.
 
+## Live range (P2)
+
+```bash
+uv run iris range plan --master 42        # the live enterprise for a seed: hosts, services, weaknesses, images
+uv run iris range build --master 42       # build its images (first time ~10-20 min, then cached)
+uv run iris range up --master 42          # deploy, health gate, teardown; --keep leaves it running
+uv run iris range status                  # iris ranges on this machine
+uv run iris range down --all              # remove kept ranges (label-scoped)
+uv run iris range gate --count 20         # P2 exit gate
+```
+
+Each run writes compose.yaml, router.nft, compiled.json (with credentials: hidden), health.json, timings.json, state.json and container logs to `$IRIS_DATA/runs/live/<stamp>-<project>/`.
+
+### Docker address pools
+
+Scenarios use realistic enterprise ranges (10.x, 172.16-31.x, 192.168.x). Docker gives other projects' networks addresses from 172.17-31 and 192.168 by default, so a scenario can collide with them: `iris range` then reports `SKIPPED: subnet conflict` (a lane problem, not a range failure). To keep Docker's own allocations out of the way, add this to `/etc/docker/daemon.json` and restart Docker (`sudo systemctl restart docker`):
+
+```json
+{ "default-address-pools": [ { "base": "10.200.0.0/14", "size": 24 } ] }
+```
+
+Networks that already exist keep their addresses until their projects are recreated (`docker network ls`; `docker compose down && docker compose up -d` in those projects).
+
 ## Packages and the D6 baseline (P6)
 
 ```bash

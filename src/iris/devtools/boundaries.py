@@ -40,7 +40,12 @@ FORBIDDEN_IMPORTS: dict[str, tuple[str, ...]] = {
         "iris.references.intel",
     ),
     "iris.oracle": ("iris.engine", "iris.evaluator"),
-    "iris.evaluator": ("iris.generator", "iris.engine", "iris.packager"),  # scores key files, not objects
+    "iris.evaluator": (
+        "iris.generator",
+        "iris.engine",
+        "iris.packager",
+        "iris.live",
+    ),  # scores key files, not objects
     "iris.packager": ("iris.engine", "iris.evaluator"),
     "iris.contracts": ("iris.generator", "iris.oracle", "iris.engine", "iris.evaluator", "iris.references"),
     "iris.core": (

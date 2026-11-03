@@ -14,6 +14,9 @@ Every planning estimate in the roadmap is replaced by a number recorded here. On
 | 2026-11-02 | laptop | EVE duplication | each forwarded flow seen on both interfaces; dedup leaves 1 per connection | 10 raw -> 5 |
 | 2026-11-02 | laptop | libfaketime with Wazuh 4.14 | no daemon starts at any offset (incl. +0), 0.9.10 and 0.9.12 | dropped: shift at export |
 | 2026-11-02 | laptop | Context packages | 1,000 built + verified in 20.5 s, 0 failures | `iris package batch` |
+| 2026-11-02 | laptop | First live range (seed 42, 13 containers) | 768 MiB total (manager 321, Suricata 174, DB 70, app 75, others 1-40) | estimate was 3.5 GB |
+| 2026-11-02 | laptop | Live run timings (images cached) | compose up 3.3 s, sensor 2.0 s, health gate 64 s, teardown 22 s | `iris range up` |
+| 2026-11-02 | laptop | Image builds (first time) | wazuh-manager 146 s, node images 8-48 s, router 17 s, external 22 s | Docker layer cache shared |
 
 ## P1 spikes to fill
 

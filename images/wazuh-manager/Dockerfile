@@ -5,7 +5,7 @@ FROM debian:12-slim
 ARG WAZUH_VERSION=4.14.9-1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps iproute2 \
  && curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg \
  && echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
       > /etc/apt/sources.list.d/wazuh.list \

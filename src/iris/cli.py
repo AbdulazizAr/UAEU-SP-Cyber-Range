@@ -680,6 +680,152 @@ def eval_d6(root: Path, decisions: Path) -> None:
     click.echo(json.dumps(score_package(root, recs).summary(), indent=2))
 
 
+# ---------------------------------------------------------------- live range (P2)
+
+
+@main.group("range")
+def range_() -> None:
+    """Live range: build images, deploy, health gate, teardown (Docker)."""
+
+
+def _print_summary(sm: Any) -> None:
+    if sm.conflict:
+        click.secho(f"seed {sm.master}  SKIPPED: subnet conflict on this machine", fg="yellow")
+        for c in sm.conflict[:4]:
+            click.echo(f"  {c}")
+        return
+    colour = "green" if sm.healthy and not sm.leftovers else "red"
+    click.secho(f"seed {sm.master}  {sm.project}  {sm.state}  healthy={sm.healthy}", fg=colour)
+    t = sm.timings
+    click.echo(
+        f"  build {t.get('build_s', 0)} s, up {t.get('compose_up_s', '-')} s,"
+        f" sensor {t.get('sensor_start_s', '-')} s,"
+        f" health {t.get('health_s', '-')} s, teardown {t.get('teardown_s', '-')} s;"
+        f" {sm.containers} containers, {sm.mem_total_mib} MiB"
+    )
+    for name in sm.failed_checks:
+        click.secho(f"  failed: {name}: {sm.failed_details.get(name, '')}", fg="red")
+    if sm.error:
+        click.secho(f"  error: {sm.error}", fg="red")
+    if sm.leftovers:
+        click.secho(f"  leftovers: {sm.leftovers}", fg="red")
+    click.echo(f"  details: {sm.run_dir}/health.json")
+
+
+@range_.command("plan")
+@click.option("--master", type=int, required=True)
+def range_plan(master: int) -> None:
+    """Show the live enterprise for a seed: hosts, images to build, weaknesses."""
+    from iris.generator.compiler import compile_spec
+    from iris.generator.sampler import SampleOverrides, sample_spec
+
+    spec = sample_spec(SeedSet.from_master(master), SampleOverrides(live=True))
+    c = compile_spec(spec)
+    click.echo(
+        f"{spec.organization.name} ({c.project}), {c.meta['container_count']} containers,"
+        f" ~{c.meta['mem_estimate_mib']} MiB"
+    )
+    for a in spec.assets:
+        svcs = ", ".join(
+            f"{s.recipe} {s.version}:{s.port}" for s in spec.services if s.asset_id == a.asset_id
+        )
+        ip = a.attachments[0].ip if a.attachments else "(router ns)"
+        mon = "agent" if a.monitored and a.role.value not in ("ids_sensor", "siem") else "-"
+        click.echo(f"  {a.hostname:14} {a.role.value:18} {ip:15} {mon:8}  {svcs}")
+    for w in spec.weaknesses:
+        click.echo(f"  weakness {w.module:22} on {w.asset_id}")
+    click.echo("images:")
+    for img in c.meta["images"]:
+        click.echo(f"  {img}")
+
+
+@range_.command("build")
+@click.option("--master", type=int, multiple=True, required=True)
+@click.option("--force", is_flag=True)
+def range_build(master: tuple[int, ...], force: bool) -> None:
+    """Build every image the live enterprises of these seeds need."""
+    from iris.generator.compiler import compile_spec
+    from iris.generator.sampler import SampleOverrides, sample_spec
+    from iris.live.images import ensure_images
+    from iris.spikes.common import require_docker
+
+    require_docker()
+    for m in master:
+        meta = compile_spec(sample_spec(SeedSet.from_master(m), SampleOverrides(live=True))).meta
+        for image, secs in ensure_images(meta, force=force).items():
+            click.echo(f"  {image}: {'reused' if secs == 0.0 else secs}")
+
+
+@range_.command("up")
+@click.option("--master", type=int, required=True)
+@click.option("--keep", is_flag=True, help="Leave the range running (iris range down to remove).")
+@click.option("--no-build", is_flag=True)
+def range_up(master: int, keep: bool, no_build: bool) -> None:
+    """Deploy one live enterprise, run the health gate, tear down (unless --keep)."""
+    from iris.live.gate import run_once
+
+    sm = run_once(master, keep=keep, build=not no_build)
+    _print_summary(sm)
+    sys.exit(0 if sm.healthy and not sm.leftovers else 1)
+
+
+@range_.command("down")
+@click.argument("project", required=False)
+@click.option("--all", "all_", is_flag=True, help="Every iris project on this machine.")
+def range_down(project: str | None, all_: bool) -> None:
+    """Remove a kept range (all containers, networks and volumes with its label)."""
+    from iris.live.deploy import down_project, running_projects
+
+    targets = sorted(running_projects()) if all_ else [project] if project else []
+    if not targets:
+        raise click.UsageError("give a PROJECT or --all")
+    for p in targets:
+        left = down_project(p)
+        click.echo(f"{p}: {'clean' if not left else f'left {left}'}")
+
+
+@range_.command("status")
+def range_status() -> None:
+    """Iris projects with containers on this machine."""
+    from iris.live.deploy import running_projects
+
+    projects = running_projects()
+    if not projects:
+        click.echo("no iris ranges on this machine")
+    for p, names in sorted(projects.items()):
+        click.echo(f"{p}: {len(names)} containers")
+
+
+@range_.command("gate")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=20, show_default=True, help="Seeds that must actually run.")
+def range_gate(start: int, count: int) -> None:
+    """P2 exit gate: COUNT seeds must deploy, pass health and tear down cleanly.
+
+    Seeds whose subnets collide with networks already on this machine are skipped and
+    replaced by the next seed (a lane problem, not a range failure).
+    """
+    from iris.live.gate import run_once
+
+    results: list[Any] = []
+    skipped: list[Any] = []
+    m = start
+    while len(results) < count and m < start + count * 3:
+        sm = run_once(m, build=True)
+        _print_summary(sm)
+        (skipped if sm.conflict else results).append(sm)
+        m += 1
+    ok = [r for r in results if r.healthy and not r.leftovers]
+    click.echo(
+        f"\nexit gate: {len(ok)}/{len(results)} healthy with clean teardown"
+        f" (seeds {start}..{m - 1}; skipped for subnet conflicts: {[r.master for r in skipped]})"
+    )
+    out = paths().runs / "live" / f"gate-{start}-{m - 1}.json"
+    out.write_text(json.dumps([r.__dict__ for r in results + skipped], indent=2, default=str) + "\n")
+    click.echo(f"summary: {out}")
+    sys.exit(0 if results and len(ok) == len(results) == count else 1)
+
+
 # ---------------------------------------------------------------- spikes (P1)
 
 
