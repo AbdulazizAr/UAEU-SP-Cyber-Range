@@ -103,6 +103,15 @@ def load_cases() -> list[dict[str, Any]]:
     return cases
 
 
+def case_passes(want: tuple[int, int], events: list[tuple[int | None, int | None]]) -> bool:
+    """A case passes when the expected rule fired somewhere in the sequence. A level-0 case
+    (\"not an alert\") passes only when nothing reached alert level, since frequency and
+    correlation rules fire on an earlier line, not the last one."""
+    if want[1] == 0:
+        return not any((lvl or 0) >= 1 for _, lvl in events)
+    return want in events
+
+
 def run_logtest(image: str = WAZUH_IMAGE) -> list[CaseResult]:
     name = f"iris-logtest-{secrets.token_hex(4)}"
     sh(
@@ -137,11 +146,10 @@ def run_logtest(image: str = WAZUH_IMAGE) -> list[CaseResult]:
         for case in load_cases():
             out = logtest(list(case["lines"]) * int(case.get("repeat", 1)))
             events = parse_logtest(out)
-            got = events[-1] if events else (None, None)
             want = (int(case["expect"]), int(case["level"]))
-            results.append(
-                CaseResult(case["name"], got == want, want, got, "" if got == want else out[-1500:])
-            )
+            got = events[-1] if events else (None, None)
+            ok = case_passes(want, events)
+            results.append(CaseResult(case["name"], ok, want, got, "" if ok else out[-1500:]))
         return results
     finally:
         sh(["docker", "rm", "-f", name], check=False)

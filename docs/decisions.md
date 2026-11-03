@@ -189,6 +189,8 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
 - **Recorder** (`iris.live.record`): marks the observe window, runs the plan with small gaps, lets detections settle, collects raw alerts/archives/eve, and runs them through the exporter. `match_detections` (a pure, tested function) checks that every expected rule fired.
 - **Outputs** go to the run directory's `episodes/<episode_id>/`: shifted telemetry (visible-shaped), `activity_truth.json` and `detections.json` (hidden: expected vs observed rule IDs, matched, missed).
 - **New commands:** `iris range record --master N` (deploy, record, verify, tear down) and `iris range detect-gate --count N` (P3 exit gate: N seeds whose expected detections all fire).
+- **Field mapping:** Wazuh's JSON decoder renames the app's `user` field to `dstuser`, so correlation rules group on `dstuser` (not `user`); the `src_ip` field keeps its name. Ruleset `org-rules-0.1.1`.
+- **IDOR is harvesting, not enumeration:** when the IDOR flaw is present the attacker successfully reads other customers' orders, so it is detected as data harvesting (100109, T1213). The enumeration rule (100107) fires only when the flaw is absent. The attacker registers its own account and signs in before exploiting IDOR or self-promotion, since it cannot use the seeded customers' passwords.
 - **P3 exit gate:** expected detections fire for every recorded episode across the gate seeds.
 
 ## Addressing

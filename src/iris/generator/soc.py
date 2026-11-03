@@ -28,7 +28,7 @@ from iris.generator.grc.reality import GrcReality
 
 SOC_VERSION = "soc-0.1.0"
 WAZUH_VERSION = "4.14.9"
-RULESET_VERSION = "wazuh-4.14.9+org-rules-0.1.0"
+RULESET_VERSION = "wazuh-4.14.9+org-rules-0.1.1"
 BASE_SOURCES = ("auth", "syslog")
 RECIPE_SOURCES = {
     "nginx": ("nginx_access", "nginx_error"),

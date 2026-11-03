@@ -95,3 +95,15 @@ def test_parse_logtest():
 \tlevel: '10'
 """
     assert parse_logtest(out) == [(100101, 5), (100102, 10)]
+
+
+def test_logtest_case_semantics():
+    from iris.live.logtest import case_passes
+
+    # frequency rule: base 100101 fires repeatedly, the compound 100102 fires once mid-run
+    seq = [(100101, 5)] * 7 + [(100102, 10)] + [(100101, 5)]
+    assert case_passes((100102, 10), seq)
+    assert not case_passes((100102, 10), [(100101, 5)] * 9)  # threshold never crossed
+    # negative case: nothing may alert
+    assert case_passes((100100, 0), [(100100, 0), (100100, 0)])
+    assert not case_passes((100100, 0), [(100100, 0), (100104, 12)])

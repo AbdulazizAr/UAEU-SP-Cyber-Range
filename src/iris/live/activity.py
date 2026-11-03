@@ -29,11 +29,14 @@ ACTIVITY_VERSION = "activity-0.1.0"
 DETECTABLE = {
     "web.sqli_login": ("T1190", [100104, 100105], "sql_injection_login"),
     "web.path_traversal": ("T1190", [100112], "path_traversal"),
-    "web.idor_object": ("T1087", [100107], "object_enumeration"),
+    # a successful IDOR lets the attacker read other customers' orders: it shows up as
+    # data harvesting (100109), not denied-access enumeration (100107, which fires when the
+    # flaw is absent).
+    "web.idor_object": ("T1213", [100109], "order_harvesting"),
     "web.privilege_update": ("T1098", [100110], "self_service_admin"),
 }
-#: brute-force login guessing is detectable whenever password login is accepted
-PASSWORD_LOGIN = "auth.ssh_password"
+#: number of order IDs the harvesting action reads (over the 100109 frequency threshold of 15)
+HARVEST_ORDERS = 22
 
 
 @dataclass
@@ -158,6 +161,16 @@ def build_plan(spec: ScenarioSpec, secrets: Secrets, rng: Any) -> ActivityPlan:
         w = planted.get(module)
         return w if w is not None and w.asset_id in web_assets else None
 
+    def authed(user: str, *cmds: str) -> str:
+        """Register a fresh account and sign in, then run the given requests in that session.
+        The attacker needs a valid session to exploit IDOR or self-promotion; it cannot use
+        the seeded customers' passwords, so it brings its own account."""
+        register = _curl(f"{base}/register", data=[f"username={user}", "password=Str0ng!pw"], out_code=True)
+        login = _curl(
+            f"{base}/login", data=[f"username={user}", "password=Str0ng!pw"], cookie=cj, out_code=True
+        )
+        return " ; ".join([register, login, *cmds])
+
     if (w := planted_on_web("web.sqli_login")) is not None:
         tech, rules, name = DETECTABLE["web.sqli_login"]
         add(
@@ -186,9 +199,8 @@ def build_plan(spec: ScenarioSpec, secrets: Secrets, rng: Any) -> ActivityPlan:
         )
     if (w := planted_on_web("web.idor_object")) is not None:
         tech, rules, name = DETECTABLE["web.idor_object"]
-        # repeated denied object references (enumeration) from one source
-        seq = " ; ".join(_curl(f"{base}/orders/{i}", cookie=cj, out_code=True) for i in range(1, 9))
-        login = _curl(f"{base}/login", data=["username=customer05", "password=x"], cookie=cj, out_code=True)
+        # with the flaw present, reading others' orders succeeds: many order views -> harvesting
+        views = [_curl(f"{base}/orders/{i}", cookie=cj, out_code=True) for i in range(1, HARVEST_ORDERS + 1)]
         add(
             label="malicious",
             actor="attacker",
@@ -197,11 +209,10 @@ def build_plan(spec: ScenarioSpec, secrets: Secrets, rng: Any) -> ActivityPlan:
             technique=tech,
             expect_rules=rules,
             weakness_id=w.weakness_id,
-            command=f"{login} ; {seq}",
+            command=authed("harvester", *views),
         )
     if (w := planted_on_web("web.privilege_update")) is not None:
         tech, rules, name = DETECTABLE["web.privilege_update"]
-        login = _curl(f"{base}/login", data=["username=customer07", "password=x"], cookie=cj, out_code=True)
         promote = _curl(f"{base}/profile/role", data=["role=admin"], cookie=cj, out_code=True)
         add(
             label="malicious",
@@ -211,7 +222,7 @@ def build_plan(spec: ScenarioSpec, secrets: Secrets, rng: Any) -> ActivityPlan:
             technique=tech,
             expect_rules=rules,
             weakness_id=w.weakness_id,
-            command=f"{login} ; {promote}",
+            command=authed("escalator", promote),
         )
 
     # repeated failed logins (password guessing) are detectable on any shop

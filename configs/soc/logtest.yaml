@@ -1,7 +1,7 @@
 # Rule tests run inside the pinned Wazuh manager image by `iris soc logtest`.
 # Each case feeds its lines to one wazuh-logtest session; the LAST line must match
 # `expect` (rule id) at `level`. `repeat` replays the line n times (frequency rules).
-version: "org-rules-0.1.0"
+version: "org-rules-0.1.1"
 cases:
   - name: shop login failure
     lines: ['{"timestamp":"2026-11-03T08:00:00.000Z","app":"shop","event":"login_failure","src_ip":"198.18.4.20","user":null,"submitted":"alice"}']
