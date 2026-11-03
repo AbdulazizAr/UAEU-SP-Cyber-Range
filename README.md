@@ -109,6 +109,8 @@ uv run iris soc profile --master 42 --live   # what the SOC really collects vs b
 uv run iris soc rules                        # rule library: IDs, parents, ATT&CK tags (pinned release)
 uv run iris soc logtest                      # rule tests through wazuh-logtest (Docker, ~1 min)
 uv run iris range up --master 42 --light     # production health gate (faster)
+uv run iris range record --master 42         # record episodes + verify SOC detections
+uv run iris range detect-gate --count 10     # P3 exit gate
 ```
 
 ## Packages and the D6 baseline (P6)

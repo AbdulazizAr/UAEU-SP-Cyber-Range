@@ -764,8 +764,12 @@ def range_build(master: tuple[int, ...], force: bool) -> None:
 def range_up(master: int, keep: bool, no_build: bool, light: bool) -> None:
     """Deploy one live enterprise, run the health gate, tear down (unless --keep)."""
     from iris.live.gate import run_once
+    from iris.spikes.common import SpikeError
 
-    sm = run_once(master, keep=keep, build=not no_build, light=light)
+    try:
+        sm = run_once(master, keep=keep, build=not no_build, light=light)
+    except SpikeError as exc:
+        raise click.ClickException(str(exc)) from exc
     _print_summary(sm)
     sys.exit(0 if sm.healthy and not sm.leftovers else 1)
 
@@ -797,6 +801,81 @@ def range_status() -> None:
         click.echo(f"{p}: {len(names)} containers")
 
 
+@range_.command("record")
+@click.option("--master", type=int, required=True)
+@click.option("--episodes", type=int, default=None, help="How many episodes (default: all in the spec).")
+@click.option("--keep", is_flag=True)
+@click.option("--no-build", is_flag=True)
+def range_record(master: int, episodes: int | None, keep: bool, no_build: bool) -> None:
+    """Deploy, record each episode's telemetry, verify SOC detections, tear down."""
+    from iris.live.gate import record_once
+    from iris.spikes.common import SpikeError
+
+    try:
+        sm = record_once(master, episodes=episodes, keep=keep, build=not no_build)
+    except SpikeError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if sm.conflict:
+        click.secho(f"seed {master}: SKIPPED (subnet conflict)", fg="yellow")
+        return
+    colour = "green" if sm.detections_ok else "red"
+    click.secho(
+        f"seed {master}  {sm.project}  healthy={sm.healthy}  detections_ok={sm.detections_ok}", fg=colour
+    )
+    for e in sm.episodes:
+        line = (
+            f"  {e['episode_id']}  alerts {e['counts'].get('alerts_visible')},"
+            f" eve {e['counts'].get('eve_visible')},"
+            f" detect {len(e['expected']) - len(e['missed'])}/{len(e['expected'])}"
+        )
+        click.secho(
+            line + (f"  MISSED {e['missed']}" if e["missed"] else ""), fg="red" if e["missed"] else None
+        )
+    if sm.error:
+        click.secho(f"  error: {sm.error}", fg="red")
+    click.echo(f"  episodes: {sm.run_dir}/episodes")
+    sys.exit(0 if sm.detections_ok else 1)
+
+
+@range_.command("detect-gate")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=10, show_default=True)
+def range_detect_gate(start: int, count: int) -> None:
+    """P3 exit gate: COUNT seeds record episodes whose expected detections all fire."""
+    from iris.live.gate import record_once
+    from iris.spikes.common import SpikeError
+
+    ran: list[Any] = []
+    skipped: list[int] = []
+    m = start
+    while len(ran) < count and m < start + count * 3:
+        try:
+            sm = record_once(m, build=True)
+        except SpikeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if sm.conflict:
+            skipped.append(m)
+            click.secho(f"seed {m}: SKIPPED (subnet conflict)", fg="yellow")
+        else:
+            ran.append(sm)
+            colour = "green" if sm.detections_ok else "red"
+            total_missed = [r for e in sm.episodes for r in e["missed"]]
+            click.secho(
+                f"seed {m}  detections_ok={sm.detections_ok}  episodes {len(sm.episodes)}"
+                + (f"  missed {total_missed}" if total_missed else ""),
+                fg=colour,
+            )
+        m += 1
+    ok = [r for r in ran if r.detections_ok]
+    click.echo(
+        f"\ndetection gate: {len(ok)}/{len(ran)} seeds with all expected detections (skipped {skipped})"
+    )
+    out = paths().runs / "live" / f"detect-gate-{start}-{m - 1}.json"
+    out.write_text(json.dumps([r.__dict__ for r in ran], indent=2, default=str) + "\n")
+    click.echo(f"summary: {out}")
+    sys.exit(0 if ran and len(ok) == len(ran) == count else 1)
+
+
 @range_.command("gate")
 @click.option("--start", type=int, default=0, show_default=True)
 @click.option("--count", type=int, default=20, show_default=True, help="Seeds that must actually run.")
@@ -807,12 +886,16 @@ def range_gate(start: int, count: int) -> None:
     replaced by the next seed (a lane problem, not a range failure).
     """
     from iris.live.gate import run_once
+    from iris.spikes.common import SpikeError
 
     results: list[Any] = []
     skipped: list[Any] = []
     m = start
     while len(results) < count and m < start + count * 3:
-        sm = run_once(m, build=True)
+        try:
+            sm = run_once(m, build=True)
+        except SpikeError as exc:
+            raise click.ClickException(str(exc)) from exc
         _print_summary(sm)
         (skipped if sm.conflict else results).append(sm)
         m += 1
@@ -874,6 +957,9 @@ def soc_logtest() -> None:
         colour = "green" if r.ok else "red"
         click.secho(f"  {'pass' if r.ok else 'FAIL'}  {r.name:36} want {r.expected}  got {r.got}", fg=colour)
     failed = [r for r in results if not r.ok]
+    if failed:
+        click.echo(f"--- wazuh-logtest output for the first failure ({failed[0].name}) ---")
+        click.echo(failed[0].raw or "(empty)")
     click.echo(f"{len(results) - len(failed)}/{len(results)} rule tests passed")
     sys.exit(0 if not failed else 1)
 

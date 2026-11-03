@@ -181,6 +181,16 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
   - Health-gate canaries (`healthcheck` syslog tag, `/hc` HTTP) are never visible.
   - Archives are visible only when the SOC retains them.
 
+## Activity and detection verification (P3, part 2)
+
+- **Scripted episode activity** (`iris.live.activity`, traffic sub-seed): steady benign business traffic (browsing, logins, orders) plus a set of labelled, known-detectable actions. Every action carries ground truth: label (benign/malicious), actor, target, ATT&CK technique and the Wazuh rule IDs a correct SOC should raise.
+- **Detections are grounded in truth.** A malicious action is scheduled only when the enabling weakness is actually in the scenario's weakness ledger, so "what should be detected" is never assumed. Password-guessing (rule 100102) is the one action detectable on any shop, since it needs no planted flaw.
+- **Commands are built with `shlex.quote`** and run from the external client/attacker nodes against the shop's own endpoints (black-box, like a real SOC validation).
+- **Recorder** (`iris.live.record`): marks the observe window, runs the plan with small gaps, lets detections settle, collects raw alerts/archives/eve, and runs them through the exporter. `match_detections` (a pure, tested function) checks that every expected rule fired.
+- **Outputs** go to the run directory's `episodes/<episode_id>/`: shifted telemetry (visible-shaped), `activity_truth.json` and `detections.json` (hidden: expected vs observed rule IDs, matched, missed).
+- **New commands:** `iris range record --master N` (deploy, record, verify, tear down) and `iris range detect-gate --count N` (P3 exit gate: N seeds whose expected detections all fire).
+- **P3 exit gate:** expected detections fire for every recorded episode across the gate seeds.
+
 ## Addressing
 
 - Docker's bridge occupies the **last usable address** of every zone subnet (.254 in a /24). The spec validator rejects any asset or gateway on it; zone gateways (our router) use .1.

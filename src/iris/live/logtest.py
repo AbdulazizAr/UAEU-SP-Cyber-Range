@@ -94,6 +94,7 @@ class CaseResult:
     ok: bool
     expected: tuple[int, int]
     got: tuple[int | None, int | None]
+    raw: str = ""  # logtest output tail when the case fails
 
 
 def load_cases() -> list[dict[str, Any]]:
@@ -119,19 +120,28 @@ def run_logtest(image: str = WAZUH_IMAGE) -> list[CaseResult]:
         if not ok:
             raise RuntimeError("manager did not start for logtest (rule syntax error?): " + sh(
                 ["docker", "logs", "--tail", "30", name], check=False).stdout)  # fmt: skip
-        results = []
-        for case in load_cases():
-            lines = list(case["lines"]) * int(case.get("repeat", 1))
-            out = sh(
+
+        def logtest(lines: list[str]) -> str:
+            cp = sh(
                 ["docker", "exec", "-i", name, "/var/ossec/bin/wazuh-logtest"],
                 input_text="\n".join(lines) + "\n",
                 check=False,
                 timeout=120,
-            ).stdout
+            )
+            return (cp.stdout or "") + (cp.stderr or "")
+
+        # analysisd answers logtest a little after the daemons report "running"
+        probe = load_cases()[0]["lines"]
+        wait_until(lambda: "Phase 1" in logtest(probe), timeout=90, interval=3)
+        results = []
+        for case in load_cases():
+            out = logtest(list(case["lines"]) * int(case.get("repeat", 1)))
             events = parse_logtest(out)
             got = events[-1] if events else (None, None)
             want = (int(case["expect"]), int(case["level"]))
-            results.append(CaseResult(case["name"], got == want, want, got))
+            results.append(
+                CaseResult(case["name"], got == want, want, got, "" if got == want else out[-1500:])
+            )
         return results
     finally:
         sh(["docker", "rm", "-f", name], check=False)

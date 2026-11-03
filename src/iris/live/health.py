@@ -77,6 +77,9 @@ class Target:
         a = next(x for x in self.spec.assets if x.asset_id == asset_id)
         return a.attachments[0].ip
 
+    def sensor_container(self) -> str:
+        return f"{self.project}-ids"
+
     def nodes(self) -> list[Any]:
         return [
             a
