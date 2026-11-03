@@ -29,7 +29,9 @@ class RunSummary:
     conflict: list[str] = field(default_factory=list)
 
 
-def run_once(master: int, keep: bool = False, build: bool = True, force_build: bool = False) -> RunSummary:
+def run_once(
+    master: int, keep: bool = False, build: bool = True, force_build: bool = False, light: bool = False
+) -> RunSummary:
     require_docker()
     spec = sample_spec(SeedSet.from_master(master), SampleOverrides(live=True))
     others = sorted(d.running_projects())
@@ -52,7 +54,7 @@ def run_once(master: int, keep: bool = False, build: bool = True, force_build: b
         if build:
             d.build(run, force=force_build)
         d.deploy(run)
-        healthy = d.check(run)
+        healthy = d.check(run, light=light)
     except Exception as exc:  # record, then always tear down unless asked to keep
         error = f"{type(exc).__name__}: {str(exc)[:500]}"
         if "Pool overlaps" in str(exc):  # a network appeared after the pre-check: still a lane conflict

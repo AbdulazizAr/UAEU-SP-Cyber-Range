@@ -29,7 +29,10 @@ import yaml
 from iris.contracts.common import AssetRole
 from iris.contracts.spec import FlowRule, ScenarioSpec
 from iris.core.hashing import canonical_json, sha256_hex
+from iris.generator.grc.reality import build_reality
 from iris.generator.secrets import Secrets, scenario_secrets
+from iris.generator.soc import build_soc
+from iris.settings import repo_root
 
 WAZUH_IMAGE = "iris/wazuh-manager:4.14.9-1"
 SURICATA_IMAGE = "jasonish/suricata:8.0.6"
@@ -67,6 +70,7 @@ class CompiledRange:
     compose: dict[str, Any]
     router_nft: str
     meta: dict[str, Any] = field(default_factory=dict)
+    extra_files: dict[str, str] = field(default_factory=dict)  # relative path -> text
 
     def write(self, out_dir: Path) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -74,10 +78,12 @@ class CompiledRange:
             "compose.yaml": yaml.safe_dump(self.compose, sort_keys=False, width=120),
             "router.nft": self.router_nft,
             "compiled.json": json.dumps(self.meta, indent=2, sort_keys=True) + "\n",
+            **self.extra_files,
         }
         written = []
         for name, text in files.items():
             path = out_dir / name
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
             written.append(path)
         return written
@@ -146,6 +152,7 @@ def asset_images(spec: ScenarioSpec) -> dict[str, str]:
 
 
 NODE_CONTEXT = "node/debian-12"
+RULES_PATH = "/var/ossec/etc/rules/local_rules.xml"
 ROUTER_CONTEXT, EXTERNAL_CONTEXT, WAZUH_CONTEXT = "router", "external", "wazuh-manager"
 DB_NAME = "shop"
 
@@ -258,6 +265,7 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
     services: dict[str, Any] = {}
     volumes: dict[str, Any] = {}
     sec = scenario_secrets(spec)
+    soc = build_soc(spec, build_reality(spec))
     domain = org_domain(spec)
     dns_asset = next((s.asset_id for s in spec.services if s.recipe == "unbound"), None)
     dns_ip = _first_ip(spec, dns_asset) if dns_asset else None
@@ -281,6 +289,7 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
         for att in a.attachments:
             address_map[att.ip] = a.asset_id
         svc: dict[str, Any] = {
+            "init": True,  # PID 1 forwards SIGTERM: stop in ~1 s instead of the 20 s kill timeout
             "hostname": a.hostname,
             "container_name": f"{project}-{a.hostname}",
             "networks": nets,
@@ -301,7 +310,7 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
                 image=WAZUH_IMAGE,
                 cap_add=["NET_ADMIN"],
                 environment={"IRIS_GATEWAY": router_ip[a.attachments[0].zone]},
-                volumes=[f"{vol}:/var/ossec"],
+                volumes=[f"{vol}:/var/ossec", f"./soc/local_rules.xml:{RULES_PATH}:ro"],
             )
         else:
             image = node_image(spec, a.asset_id, a.role, a.os_profile)
@@ -317,6 +326,7 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
             }
             if dns_ip:  # the init script points resolv.conf at the enterprise resolver
                 env["IRIS_DNS"] = dns_ip
+            env.update(soc.env(a.asset_id))
             vols: list[str] = []
             if a.monitored and siem_ip:
                 env.update(WAZUH_MANAGER=siem_ip, AGENT_NAME=a.hostname)
@@ -334,6 +344,7 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
         name = ext.node_id.lower()
         address_map[ext.ip] = ext.node_id
         services[name] = {
+            "init": True,
             "image": EXTERNAL_IMAGE,
             "hostname": f"host-{ext.ip.replace('.', '-')}",
             "container_name": f"{project}-{name}",
@@ -374,5 +385,14 @@ def compile_spec(spec: ScenarioSpec) -> CompiledRange:
         "domain": domain,
         "dns_server": dns_ip,
         "secrets": sec.to_dict(),
+        "soc": soc.to_dict(),
     }
-    return CompiledRange(project=project, compose=compose, router_nft=render_nft(spec), meta=meta)
+    rules = (repo_root() / "configs" / "soc" / "local_rules.xml").read_text(encoding="utf-8")
+    meta["rules_sha256"] = sha256_hex(rules)
+    return CompiledRange(
+        project=project,
+        compose=compose,
+        router_nft=render_nft(spec),
+        meta=meta,
+        extra_files={"soc/local_rules.xml": rules},
+    )

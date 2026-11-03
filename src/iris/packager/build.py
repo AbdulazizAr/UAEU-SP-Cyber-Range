@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,7 @@ from iris.generator.grc.timeline import TIMELINE_VERSION, build_timeline
 from iris.generator.posture.build import POSTURE_VERSION, build_posture
 from iris.generator.posture.trivy import ImageReport
 from iris.generator.sampler import SampleOverrides, sample_spec
+from iris.generator.soc import SOC_VERSION, belief_gaps, build_soc, soc_inventory
 from iris.oracle.d6 import D6_KEY_VERSION, build_d6_key
 from iris.references.intel import Intel
 
@@ -104,6 +105,11 @@ def assemble(
             "posture": True,
             "epss_snapshots": p.meta["epss_snapshots"],
         }
+    soc = build_soc(spec, grc.reality, seeds)
+    recorded = {c.control_id: c.implementation_state for c in grc.controls}
+    visible["soc/soc_inventory.json"] = soc_inventory(spec, soc, recorded).model_dump(mode="json")
+    hidden["truth/soc_profile.json"] = soc.to_dict()
+    hidden["truth/soc_gap_ledger.jsonl"] = [asdict(g) for g in belief_gaps(soc, recorded)]
     for eid, key in build_d6_key(spec, grc, tl).items():
         hidden[f"evaluation_key/d6/{eid}.json"] = key
     hidden["posture/generated_weaknesses.json"] = [w.model_dump(mode="json") for w in spec.weaknesses]
@@ -191,6 +197,7 @@ def write_package(a: Assembled, out_dir: Path) -> PackageResult:
             "timeline": TIMELINE_VERSION,
             "posture": POSTURE_VERSION,
             "d6_key": D6_KEY_VERSION,
+            "soc": SOC_VERSION,
         },
         "seeds": a.seeds.to_dict(),
         "lineage": {"parent": None, "overridden_subseeds": sorted(a.seeds.overridden)},

@@ -30,6 +30,7 @@ from iris.contracts.visible import (
     ScaleDefinition,
     ScannerFinding,
     Service,
+    SocInventory,
     Topology,
     VisibleManifest,
 )
@@ -52,6 +53,7 @@ FILE_MODELS: dict[str, tuple[Any, bool]] = {  # path -> (model, is_list)
     "posture/scanner_findings.jsonl": (ScannerFinding, True),
     "posture/cve_enrichment.jsonl": (CveEnrichment, True),
     "snapshots/context_history.jsonl": (ContextChange, True),
+    "soc/soc_inventory.json": (SocInventory, False),
 }
 FORBIDDEN_PATTERNS = {
     "flaw id": re.compile(r'"F-\d{3}"'),

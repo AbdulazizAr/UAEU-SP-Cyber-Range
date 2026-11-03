@@ -177,7 +177,8 @@ def _exec(container: str, cmd: str) -> str:
     return sh(["docker", "exec", container, "sh", "-c", cmd], check=False, timeout=60).stdout
 
 
-def check(run: LiveRun) -> bool:
+def check(run: LiveRun, light: bool = False) -> bool:
+    """Full gate (acceptance) or light gate (production: what recording depends on)."""
     run.state.to("CHECKING")
     t0 = time.monotonic()
     gate = HealthGate(Target(run.spec, run.project, run.compiled.meta), run=_exec)
@@ -185,14 +186,16 @@ def check(run: LiveRun) -> bool:
     gate.init(_logs)
     gate.router()
     gate.ports()
-    gate.dns()
-    gate.app_db()
-    gate.paths()
-    gate.egress()
+    if not light:
+        gate.dns()
+        gate.app_db()
+        gate.paths()
+        gate.egress()
     gate.wazuh()
     gate.canary()
     gate.suricata(run.sensor)
-    gate.weaknesses()
+    if not light:
+        gate.weaknesses()
     _timed(run, "health_s", t0)
     mems = {n: mem_mib(n) for n in running_projects().get(run.project, [])}
     run.health["mem_mib"] = mems

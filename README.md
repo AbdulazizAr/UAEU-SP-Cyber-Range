@@ -102,6 +102,15 @@ Scenarios use realistic enterprise ranges (10.x, 172.16-31.x, 192.168.x). Docker
 
 Networks that already exist keep their addresses until their projects are recreated (`docker network ls`; `docker compose down && docker compose up -d` in those projects).
 
+## SOC (P3)
+
+```bash
+uv run iris soc profile --master 42 --live   # what the SOC really collects vs believes, and the gaps
+uv run iris soc rules                        # rule library: IDs, parents, ATT&CK tags (pinned release)
+uv run iris soc logtest                      # rule tests through wazuh-logtest (Docker, ~1 min)
+uv run iris range up --master 42 --light     # production health gate (faster)
+```
+
 ## Packages and the D6 baseline (P6)
 
 ```bash

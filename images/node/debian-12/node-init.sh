@@ -228,6 +228,50 @@ has_recipe unbound && start_unbound
 has_recipe flask_shop && start_shop
 has_recipe nginx && start_nginx
 
+# ---------------------------------------------------------------- SCA baseline policy
+# The organisation's own configuration baseline. Each check names the control it tests,
+# so SCA results are evidence about the real state of the recorded controls.
+sca_check() { # sca_check <id> <title> <control> <condition> <rule>
+  printf '  - id: %s\n    title: "%s"\n    compliance:\n      - org_controls: ["%s"]\n    condition: %s\n    rules:\n      - '"'"'%s'"'"'\n' \
+    "$1" "$2" "$3" "$4" "$5"
+}
+write_sca_policy() {
+  {
+    printf '%s\n' \
+      'policy:' \
+      '  id: "org_baseline"' \
+      '  file: "org_baseline.yml"' \
+      '  name: "Organisation server configuration baseline"' \
+      '  description: "Internal hardening baseline derived from the security policy."' \
+      'requirements:' \
+      '  title: "Linux host"' \
+      '  description: "Baseline applies to Linux servers"' \
+      '  condition: any' \
+      '  rules:' \
+      "    - 'f:/etc/passwd'" \
+      'checks:'
+    sca_check 90001 "Passwordless sudo is not configured" CTRL-ACC-003 none 'd:/etc/sudoers.d -> r:. -> r:NOPASSWD'
+    if has_recipe openssh; then
+      sca_check 90010 "SSH password authentication is disabled" CTRL-IAM-002 all \
+        'f:/etc/ssh/sshd_config.d/10-site.conf -> r:^PasswordAuthentication\s+no'
+      sca_check 90011 "SSH root login is not permitted with a password" CTRL-IAM-004 none \
+        'f:/etc/ssh/sshd_config.d/10-site.conf -> r:^PermitRootLogin\s+yes'
+      sca_check 90012 "No vendor deploy key is authorised for root" CTRL-IAM-005 none \
+        'f:/root/.ssh/authorized_keys -> r:deploy@vendor'
+    fi
+    if has_recipe postgresql; then
+      sca_check 90020 "Database accepts connections only from listed clients" CTRL-NET-002 none \
+        "f:/etc/postgresql/$(ls /etc/postgresql | sort -V | tail -1)/main/pg_hba.conf -> r:0.0.0.0/0"
+    fi
+    if has_recipe nginx; then
+      sca_check 90030 "Administrative paths are not exposed" CTRL-NET-003 all \
+        'f:/etc/nginx/conf.d/site.conf -> r:return 403'
+      sca_check 90031 "Legacy TLS protocols are disabled" CTRL-CRY-001 none \
+        'f:/etc/nginx/conf.d/site.conf -> r:TLSv1 '
+    fi
+  } > "$1"
+}
+
 # ---------------------------------------------------------------- wazuh agent
 add_localfile() { # add_localfile <format> <path>
   grep -q "<location>$2</location>" /var/ossec/etc/ossec.conf && return
@@ -236,11 +280,21 @@ add_localfile() { # add_localfile <format> <path>
 }
 if [ -n "${WAZUH_MANAGER:-}" ] && [ -n "${AGENT_NAME:-}" ]; then
   sed -i "s#<address>.*</address>#<address>${WAZUH_MANAGER}</address>#" /var/ossec/etc/ossec.conf
-  add_localfile syslog /var/log/auth.log
-  add_localfile syslog /var/log/syslog
-  has_recipe nginx && add_localfile apache /var/log/nginx/access.log && add_localfile apache /var/log/nginx/error.log
-  has_recipe postgresql && add_localfile syslog "/var/log/postgresql/postgresql-*-main.log"
-  has_recipe flask_shop && add_localfile json /var/log/shop/app.log
+  # Log sources the SOC really collects on this host (iris.generator.soc), "format|path;..."
+  IFS=';' read -ra sources <<< "${IRIS_LOGSOURCES:-syslog|/var/log/auth.log}"
+  for src in "${sources[@]}"; do
+    [ -n "$src" ] && add_localfile "${src%%|*}" "${src#*|}"
+  done
+  if [ "${IRIS_FIM:-1}" = "0" ]; then
+    perl -0pi -e 's#(<syscheck>\s*<disabled>)no#${1}yes#' /var/ossec/etc/ossec.conf
+  fi
+  if [ "${IRIS_SCA:-0}" = "1" ]; then
+    write_sca_policy /var/ossec/etc/org_baseline.yml
+    chown root:wazuh /var/ossec/etc/org_baseline.yml && chmod 0640 /var/ossec/etc/org_baseline.yml
+    grep -q org_baseline.yml /var/ossec/etc/ossec.conf || perl -0pi -e \
+      's#(<sca>)#$1\n    <policies>\n      <policy>/var/ossec/etc/org_baseline.yml</policy>\n    </policies>#' \
+      /var/ossec/etc/ossec.conf
+  fi
   if [ ! -s /var/ossec/etc/client.keys ]; then
     for _ in $(seq 1 90); do
       /var/ossec/bin/agent-auth -m "${WAZUH_MANAGER}" -A "${AGENT_NAME}" >/dev/null 2>&1 && break

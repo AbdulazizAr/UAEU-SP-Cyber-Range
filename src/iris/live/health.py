@@ -226,14 +226,17 @@ class HealthGate:
         monitored = [a for a in self.t.nodes() if a.monitored]
         seen: set[str] = set()
         t0 = time.monotonic()
+        last_emit = -1e9
         while time.monotonic() - t0 < timeout and len(seen) < len(monitored):
-            for a in monitored:
-                if a.hostname not in seen:
-                    self.run(
-                        self.t.container(a.asset_id),
-                        f"logger -p auth.info -t healthcheck hc-{nonce}-{a.hostname}",
-                    )
-            time.sleep(10)
+            if time.monotonic() - last_emit >= 15:  # (re-)emit: an agent may still be restarting
+                for a in monitored:
+                    if a.hostname not in seen:
+                        self.run(
+                            self.t.container(a.asset_id),
+                            f"logger -p auth.info -t healthcheck hc-{nonce}-{a.hostname}",
+                        )
+                last_emit = time.monotonic()
+            time.sleep(2)
             archive = self.run(
                 mgr, f"grep -o 'hc-{nonce}-[a-z0-9-]*' /var/ossec/logs/archives/archives.json | sort -u"
             )
@@ -252,14 +255,19 @@ class HealthGate:
         scheme = "https" if web.tls else "http"
         for _ in range(n):
             self.run(client, f"curl -sk -o /dev/null -m 5 {scheme}://{ip}:{web.port}/hc")
-            time.sleep(1)
-        time.sleep(5)  # http/tls records are written when the transaction completes
-        events = [
-            json.loads(x)
-            for x in self.run(sensor, "cat /var/log/suricata/eve.json").splitlines()
-            if x.startswith("{")
-        ]
         kind = "tls" if web.tls else "http"
+        events: list[dict[str, Any]] = []
+
+        def seen_all() -> bool:
+            events[:] = [
+                json.loads(x)
+                for x in self.run(sensor, "cat /var/log/suricata/eve.json").splitlines()
+                if x.startswith("{")
+            ]
+            got = [e for e in dedup(events) if e.get("event_type") == kind and e.get("dest_ip") == ip]
+            return len(got) >= n
+
+        wait_until(seen_all, timeout=20, interval=1)
         raw = [e for e in events if e.get("event_type") == kind and e.get("dest_ip") == ip]
         clean = [e for e in dedup(events) if e.get("event_type") == kind and e.get("dest_ip") == ip]
         self.r.check(

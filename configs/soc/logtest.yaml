@@ -1,0 +1,48 @@
+# Rule tests run inside the pinned Wazuh manager image by `iris soc logtest`.
+# Each case feeds its lines to one wazuh-logtest session; the LAST line must match
+# `expect` (rule id) at `level`. `repeat` replays the line n times (frequency rules).
+version: "org-rules-0.1.0"
+cases:
+  - name: shop login failure
+    lines: ['{"timestamp":"2026-11-03T08:00:00.000Z","app":"shop","event":"login_failure","src_ip":"198.18.4.20","user":null,"submitted":"alice"}']
+    expect: 100101
+    level: 5
+  - name: shop password guessing
+    lines: ['{"timestamp":"2026-11-03T08:00:01.000Z","app":"shop","event":"login_failure","src_ip":"198.18.4.21","user":null,"submitted":"admin"}']
+    repeat: 9
+    expect: 100102
+    level: 10
+  - name: shop login success
+    lines: ['{"timestamp":"2026-11-03T08:01:00.000Z","app":"shop","event":"login_success","src_ip":"198.18.4.20","user":"customer03","role":"customer","submitted":"customer03"}']
+    expect: 100103
+    level: 3
+  - name: shop SQL injection login
+    lines: ['{"timestamp":"2026-11-03T08:02:00.000Z","app":"shop","event":"login_success","src_ip":"198.18.4.66","user":"shopadmin","role":"admin","submitted":"x'' OR ''1''=''1'' --"}']
+    expect: 100104
+    level: 12
+  - name: shop SQL error
+    lines: ['{"timestamp":"2026-11-03T08:02:05.000Z","app":"shop","event":"db_error","src_ip":"198.18.4.66","user":"x''","error":"unterminated quoted string at or near \"''\""}']
+    expect: 100105
+    level: 12
+  - name: shop path traversal
+    lines: ['{"timestamp":"2026-11-03T08:03:00.000Z","app":"shop","event":"download","src_ip":"198.18.4.66","user":null,"file":"../../../etc/passwd"}']
+    expect: 100112
+    level: 12
+  - name: shop self-promotion to admin
+    lines: ['{"timestamp":"2026-11-03T08:04:00.000Z","app":"shop","event":"role_change","src_ip":"198.18.4.66","user":"mallory","role":"admin"}']
+    expect: 100110
+    level: 12
+  - name: shop object enumeration
+    lines: ['{"timestamp":"2026-11-03T08:05:00.000Z","app":"shop","event":"access_denied","src_ip":"198.18.4.66","user":"mallory","object":"order:17"}']
+    repeat: 7
+    expect: 100107
+    level: 10
+  - name: shop order harvesting
+    lines: ['{"timestamp":"2026-11-03T08:06:00.000Z","app":"shop","event":"order_view","src_ip":"198.18.4.66","user":"mallory","order_id":5,"owner":"customer02"}']
+    repeat: 16
+    expect: 100109
+    level: 8
+  - name: ordinary product page is not an alert
+    lines: ['{"timestamp":"2026-11-03T08:07:00.000Z","app":"shop","event":"http","src_ip":"198.18.4.20","method":"GET","path":"/","status":200,"user":null}']
+    expect: 100100
+    level: 0

@@ -161,6 +161,26 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
   - Two failures had weak TLS planted on non-TLS websites. Fixed: the weakness catalog now has `requires: tls`, catalog version 0.2.0.
   - Two collided with other Docker projects' 172.18 and 172.21 networks. These are now detected before deploy.
 
+## SOC (P3, part 1)
+
+- **Speed:** every container gets `init: true`, so the Wazuh manager stops on SIGTERM. Teardown drops from 22 s to a few seconds. Health checks now poll instead of sleeping. `iris range up --light` is the production gate: containers, init, router, ports, Wazuh, canaries and Suricata. The full gate stays for acceptance.
+- **SOC profile** (`iris.generator.soc`, monitoring sub-seed):
+  - **Reality.** Each monitored host collects its standard sources (`auth` always) with probability 0.97, 0.88 or 0.70 by maturity.
+  - FIM follows the real state of CTRL-LOG-003 (implemented means on, partial about half, missing off).
+  - The SCA baseline follows CTRL-CFG-001, on servers only.
+  - Alert retention is 365, 180 or 90 days; archives are retained with probability 1.0, 0.5 or 0.0.
+  - **Belief.** The visible `soc/soc_inventory.json` lists the standard sources per role and the coverage statements. The statements repeat the *recorded* control states, so a paper control becomes a false SOC belief.
+  - **Gaps.** A source believed but not collected, or FIM/SCA claimed by a recorded "implemented" control but not active, is a hidden SOC gap (`truth/soc_gap_ledger.jsonl`, DC2).
+- **Agent configuration** is derived from that reality: the compiler passes `IRIS_LOGSOURCES` (format and path), `IRIS_FIM` and `IRIS_SCA` to each monitored node.
+- **SCA baseline `org_baseline`** is written per node from its recipes. Each check carries `org_controls: [CTRL-...]`, so SCA results are visible evidence about the real state of the recorded controls (DC2 for D6). Checks cover NOPASSWD sudo, SSH password auth, root login, the vendor deploy key, pg_hba open to all, admin paths and legacy TLS.
+- **Rule library** `configs/soc/local_rules.xml` (org-rules-0.1.0, IDs 100100-100199): 14 rules on the shop app's JSON events, 8 of them tagged with ATT&CK (T1110, T1110.001, T1190, T1078, T1087, T1213, T1098, T1083). It is mounted read-only into the manager, and its SHA-256 is recorded in compiled.json. Built-in Wazuh rules cover sshd, nginx and PostgreSQL. The app logs the submitted user name (`submitted`), which is how SQL-injection logins are detected.
+- **Rule tests:** `iris soc rules` (IDs, parents, ATT&CK tags against the pinned release) and `iris soc logtest` (10 cases through `wazuh-logtest` in a throwaway manager, frequency rules included).
+- **Exporter** (`iris.generator.export`):
+  - The episode window is [observe start, observe end) on the real clock. Before it is pre-roll and after it is drain; both are hidden (`preroll/<episode_id>/`).
+  - Inside the window, records are shifted to the virtual start. EVE is de-duplicated before splitting.
+  - Health-gate canaries (`healthcheck` syslog tag, `/hc` HTTP) are never visible.
+  - Archives are visible only when the SOC retains them.
+
 ## Addressing
 
 - Docker's bridge occupies the **last usable address** of every zone subnet (.254 in a /24). The spec validator rejects any asset or gateway on it; zone gateways (our router) use .1.

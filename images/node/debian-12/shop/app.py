@@ -201,13 +201,13 @@ def login():
             )
         row = cur.fetchone()
     except psycopg2.Error as exc:
-        event("db_error", user=u, error=str(exc).splitlines()[0][:200])
+        event("db_error", user=None, submitted=u, error=str(exc).splitlines()[0][:200])
         return jsonify(error="internal error"), 500
     if not row:
-        event("login_failure", user=u)
+        event("login_failure", user=None, submitted=u)
         return jsonify(error="invalid credentials"), 401
     session.update(uid=row[0], user=row[1], role=row[2])
-    event("login_success", user=row[1], role=row[2])
+    event("login_success", user=row[1], role=row[2], submitted=u)
     return jsonify(user=row[1], role=row[2])
 
 

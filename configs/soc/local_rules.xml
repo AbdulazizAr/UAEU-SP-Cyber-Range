@@ -1,0 +1,130 @@
+<!--
+  Organisation detection rules (org-rules-0.1.0), loaded by the live range's Wazuh manager
+  as local_rules.xml. Covers the online shop application's JSON events
+  (/var/log/shop/app.log). Built-in Wazuh rules cover sshd, nginx and PostgreSQL logs.
+  IDs 100100-100199. ATT&CK IDs are checked against the pinned ATT&CK release by
+  `iris soc rules`.
+-->
+<group name="shop,web_app,">
+
+  <rule id="100100" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="app">^shop$</field>
+    <description>Shop application event</description>
+  </rule>
+
+  <rule id="100101" level="5">
+    <if_sid>100100</if_sid>
+    <field name="event">^login_failure$</field>
+    <description>Shop: failed login for $(submitted) from $(src_ip)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_failed,</group>
+  </rule>
+
+  <rule id="100102" level="10" frequency="8" timeframe="120">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_field>src_ip</same_field>
+    <description>Shop: repeated failed logins from $(src_ip) (possible password guessing)</description>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+    <group>authentication_failures,</group>
+  </rule>
+
+  <rule id="100103" level="3">
+    <if_sid>100100</if_sid>
+    <field name="event">^login_success$</field>
+    <description>Shop: login as $(user) from $(src_ip)</description>
+    <group>authentication_success,</group>
+  </rule>
+
+  <rule id="100104" level="12">
+    <if_sid>100103</if_sid>
+    <field name="submitted">'</field>
+    <description>Shop: login succeeded with SQL syntax in the submitted user name (SQL injection)</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1078</id>
+    </mitre>
+    <group>attack,sql_injection,</group>
+  </rule>
+
+  <rule id="100105" level="12">
+    <if_sid>100100</if_sid>
+    <field name="event">^db_error$</field>
+    <description>Shop: database error caused by request input from $(src_ip) (possible SQL injection)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>attack,sql_injection,</group>
+  </rule>
+
+  <rule id="100106" level="5">
+    <if_sid>100100</if_sid>
+    <field name="event">^access_denied$</field>
+    <description>Shop: $(user) denied access to $(object)</description>
+    <group>access_denied,</group>
+  </rule>
+
+  <rule id="100107" level="10" frequency="6" timeframe="120">
+    <if_matched_sid>100106</if_matched_sid>
+    <same_field>user</same_field>
+    <description>Shop: repeated access denials for $(user) (object enumeration)</description>
+    <mitre>
+      <id>T1087</id>
+    </mitre>
+  </rule>
+
+  <rule id="100108" level="3">
+    <if_sid>100100</if_sid>
+    <field name="event">^order_view$</field>
+    <description>Shop: $(user) viewed order $(order_id)</description>
+  </rule>
+
+  <rule id="100109" level="8" frequency="15" timeframe="60">
+    <if_matched_sid>100108</if_matched_sid>
+    <same_field>user</same_field>
+    <description>Shop: unusual number of order views by $(user) (possible data harvesting)</description>
+    <mitre>
+      <id>T1213</id>
+    </mitre>
+  </rule>
+
+  <rule id="100110" level="12">
+    <if_sid>100100</if_sid>
+    <field name="event">^role_change$</field>
+    <field name="role">^admin$</field>
+    <description>Shop: $(user) granted the admin role to their own account</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+    <group>privilege_escalation,</group>
+  </rule>
+
+  <rule id="100111" level="3">
+    <if_sid>100100</if_sid>
+    <field name="event">^admin_view$</field>
+    <description>Shop: admin console opened by $(user)</description>
+  </rule>
+
+  <rule id="100112" level="12">
+    <if_sid>100100</if_sid>
+    <field name="event">^download$</field>
+    <field name="file">\.\./</field>
+    <description>Shop: path traversal in a download request from $(src_ip)</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1083</id>
+    </mitre>
+    <group>attack,path_traversal,</group>
+  </rule>
+
+  <rule id="100113" level="3">
+    <if_sid>100100</if_sid>
+    <field name="event">^register$</field>
+    <description>Shop: new account $(user) registered from $(src_ip)</description>
+  </rule>
+
+</group>

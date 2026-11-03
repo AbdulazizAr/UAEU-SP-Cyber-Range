@@ -760,11 +760,12 @@ def range_build(master: tuple[int, ...], force: bool) -> None:
 @click.option("--master", type=int, required=True)
 @click.option("--keep", is_flag=True, help="Leave the range running (iris range down to remove).")
 @click.option("--no-build", is_flag=True)
-def range_up(master: int, keep: bool, no_build: bool) -> None:
+@click.option("--light", is_flag=True, help="Production gate: skip the slow acceptance-only checks.")
+def range_up(master: int, keep: bool, no_build: bool, light: bool) -> None:
     """Deploy one live enterprise, run the health gate, tear down (unless --keep)."""
     from iris.live.gate import run_once
 
-    sm = run_once(master, keep=keep, build=not no_build)
+    sm = run_once(master, keep=keep, build=not no_build, light=light)
     _print_summary(sm)
     sys.exit(0 if sm.healthy and not sm.leftovers else 1)
 
@@ -824,6 +825,86 @@ def range_gate(start: int, count: int) -> None:
     out.write_text(json.dumps([r.__dict__ for r in results + skipped], indent=2, default=str) + "\n")
     click.echo(f"summary: {out}")
     sys.exit(0 if results and len(ok) == len(results) == count else 1)
+
+
+# ---------------------------------------------------------------- SOC (P3)
+
+
+@main.group()
+def soc() -> None:
+    """SOC configuration: detection rules, rule tests, SOC profiles."""
+
+
+@soc.command("rules")
+def soc_rules() -> None:
+    """Static check of configs/soc/local_rules.xml (IDs, parents, ATT&CK tags)."""
+    from iris.live.logtest import parse_rules, rules_path, rules_report
+    from iris.references.registry import ReferenceError, require
+
+    attack_ids: set[str] | None = None
+    try:
+        from iris.references.attack import load
+
+        cat = load(require("attack-enterprise"))
+        attack_ids = set(cat.techniques) - cat.retired
+        click.echo(f"ATT&CK {cat.version}: {len(attack_ids)} current techniques")
+    except ReferenceError as exc:
+        click.secho(f"ATT&CK not pinned, tags checked for format only ({exc})", fg="yellow")
+    rules = parse_rules(rules_path().read_text(encoding="utf-8"))
+    problems = rules_report(attack_ids)
+    tagged = sum(1 for r in rules if r["mitre"])
+    click.echo(f"{len(rules)} rules, {tagged} with ATT&CK tags")
+    for p in problems:
+        click.secho(f"  {p}", fg="red")
+    click.secho(
+        "rules OK" if not problems else f"{len(problems)} problem(s)", fg="green" if not problems else "red"
+    )
+    sys.exit(0 if not problems else 1)
+
+
+@soc.command("logtest")
+def soc_logtest() -> None:
+    """Run the rule test suite in a throwaway Wazuh manager (Docker, ~1 min)."""
+    from iris.live.logtest import run_logtest
+    from iris.spikes.common import require_docker
+
+    require_docker()
+    results = run_logtest()
+    for r in results:
+        colour = "green" if r.ok else "red"
+        click.secho(f"  {'pass' if r.ok else 'FAIL'}  {r.name:36} want {r.expected}  got {r.got}", fg=colour)
+    failed = [r for r in results if not r.ok]
+    click.echo(f"{len(results) - len(failed)}/{len(results)} rule tests passed")
+    sys.exit(0 if not failed else 1)
+
+
+@soc.command("profile")
+@click.option("--master", type=int, required=True)
+@click.option("--live", is_flag=True, help="Use the live build matrix.")
+def soc_profile(master: int, live: bool) -> None:
+    """What the SOC really collects for a seed, what it believes, and the gaps."""
+    from iris.generator.grc.recorded import build_grc
+    from iris.generator.sampler import SampleOverrides, sample_spec
+    from iris.generator.soc import belief_gaps, build_soc
+
+    seeds = SeedSet.from_master(master)
+    spec = sample_spec(seeds, SampleOverrides(live=live))
+    grc = build_grc(spec, seeds)
+    prof = build_soc(spec, grc.reality, seeds)
+    recorded = {c.control_id: c.implementation_state for c in grc.controls}
+    host = {a.asset_id: a.hostname for a in spec.assets}
+    kept = "kept" if prof.archives_retained else "not kept"
+    click.echo(
+        f"{spec.organization.name}: maturity {spec.organization.maturity.value},"
+        f" alerts kept {prof.alert_retention_days} d, archives {kept}"
+    )
+    for aid, real in prof.sources.items():
+        missing = [s for s in prof.believed[aid] if s not in real]
+        fim, sca = ("on" if prof.fim[aid] else "off"), ("on" if prof.sca[aid] else "off")
+        extra = f"  MISSING {missing}" if missing else ""
+        click.echo(f"  {host[aid]:12} sources {','.join(real):40} fim={fim} sca={sca}{extra}")
+    for g in belief_gaps(prof, recorded):
+        click.echo(f"  gap {g.gap_id} {g.kind:22} {host[g.asset_id]:12} {g.detail}")
 
 
 # ---------------------------------------------------------------- spikes (P1)
