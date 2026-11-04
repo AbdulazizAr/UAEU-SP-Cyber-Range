@@ -155,10 +155,11 @@ def record_once(
                             "counts": rec.counts,
                         },
                         indent=2,
-                    )
+                    ),
+                    encoding="utf-8",
                 )
                 (edir / rec.episode_id / "activity_truth.json").write_text(
-                    json.dumps(rec.plan_truth, indent=2)
+                    json.dumps(rec.plan_truth, indent=2), encoding="utf-8"
                 )
                 eps.append(
                     {

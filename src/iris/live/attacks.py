@@ -55,6 +55,26 @@ ACTION_META: dict[str, tuple[str, str, str]] = {
 
 MODULE_FAMILY = {m: fam for fam, meta in FAMILIES.items() for m in meta["modules"]}
 
+#: Outcome of a malicious action when its post-condition is not verified separately.
+#: Exploits of a planted, deploy-verified weakness succeed; password guessing with
+#: wrong passwords is an *attempt*: it stays malicious (failed attacks remain malicious)
+#: but must not mark the episode as compromised, which would inflate the D2 priority key.
+ACTION_OUTCOME: dict[str, str] = {
+    "sql_injection_login": "success",
+    "path_traversal": "success",
+    "order_harvesting": "success",
+    "self_service_admin": "success",
+    "login_guessing": "failed",
+}
+
+
+def outcome_of_action(name: str | None, label: str) -> str:
+    """``success`` / ``failed`` for malicious actions (unknown names default to success,
+    the previous behaviour), ``n/a`` for benign ones."""
+    if label != "malicious":
+        return "n/a"
+    return ACTION_OUTCOME.get(name or "", "success")
+
 
 def family_of_action(name: str) -> str | None:
     meta = ACTION_META.get(name)

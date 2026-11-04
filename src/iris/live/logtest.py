@@ -98,7 +98,9 @@ class CaseResult:
 
 
 def load_cases() -> list[dict[str, Any]]:
-    data: dict[str, Any] = yaml.safe_load((repo_root() / "configs" / "soc" / "logtest.yaml").read_text())
+    data: dict[str, Any] = yaml.safe_load(
+        (repo_root() / "configs" / "soc" / "logtest.yaml").read_text(encoding="utf-8")
+    )
     cases: list[dict[str, Any]] = data["cases"]
     return cases
 
