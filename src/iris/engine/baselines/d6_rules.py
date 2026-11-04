@@ -45,7 +45,8 @@ class _Out:
         kind = {"risks": "risk", "controls": "control", "exceptions": "exception"}.get(coll, "record")
         self.items.append(
             DecisionRecord(
-                decision_id=f"dec-{self.eid[-6:]}-{len(self.items) + 1:03d}",
+                # the episode id is globally unique, so decision ids never collide across scenarios
+                decision_id=f"dec-{self.eid}-{len(self.items) + 1:03d}",
                 scenario_id=self.scn,
                 episode_id=self.eid,
                 as_of=self.at,
@@ -115,11 +116,11 @@ def decide_episode(visible: Path, eid: str) -> list[DecisionRecord]:
     for h in history:
         if h["change_type"] == "criticality_reassessed":
             changed.pop(h["entity_id"], None)
+    reassessed = {h["entity_id"] for h in history if h["change_type"] == "risk_reassessed"}
     for aid, when in sorted(changed.items()):
         out.add("business_context", aid, "asset.criticality_stale",
                 f"business process changed {when:%Y-%m-%d}; criticality not re-assessed", 0.6,
                 [f"snapshots/context_history.jsonl#{aid}"])  # fmt: skip
-        reassessed = {h["entity_id"] for h in history if h["change_type"] == "risk_reassessed"}
         for r in risks:
             if aid in r["entity_refs"] and r["risk_id"] not in reassessed:
                 out.add("risks", r["risk_id"], "risk.impact_stale",
