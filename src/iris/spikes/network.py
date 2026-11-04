@@ -296,7 +296,7 @@ def run(build: bool = True, keep: bool = False, suricata_image: str = DEFAULT_SU
         logs = sh(["docker", "logs", SENSOR], check=False)
         (run_dir / "suricata.log").write_text(logs.stdout + logs.stderr)
         sh(["docker", "cp", f"{SENSOR}:/var/log/suricata/eve.json", str(run_dir / "eve.json")], timeout=60)
-        events = load_eve(Path(run_dir / "eve.json").read_text())
+        events = load_eve(Path(run_dir / "eve.json").read_text(encoding="utf-8"))
         analyse(events, result)
     except SpikeError as exc:
         result.errors.append(str(exc))
