@@ -135,6 +135,10 @@ def build_dataset(
     splits = build_splits(list(uniq.values()), ood)
     in_dist = set(splits.in_distribution)
     blocked = set(splits.indist_blocked_families)
+    # Never compose training data from recordings of a held-out group: all data of one
+    # enterprise stays in one set (contract section 16, "never split within a group").
+    ood_groups = {gid for s in splits.ood_sets.values() for gid in s.group_ids}
+    allowed = allowed - ood_groups
 
     packages: list[PackageResult] = []
     cov_items: list[EpisodeCoverage] = []
