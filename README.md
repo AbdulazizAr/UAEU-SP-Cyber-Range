@@ -6,19 +6,28 @@ Synthetic SOC/GRC cyber range, dataset generator and evaluation harness, plus th
 - Engine contract: `docs/contract/IRIS_Input_Agreement_v2.0.md`.
 - Measurements that replace planning estimates: `docs/measurements.md`.
 
-## Setup (Ubuntu, once)
+## Setup
+
+Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/). Docker is only needed for the live
+range (`iris range ...`, `iris spike ...`); everything else runs offline.
 
 ```bash
-cd ~/work/iris
-git init && git add -A && git commit -m "P0 skeleton"    # first time only
-make setup                 # uv sync + pre-commit hooks (needs internet)
-export IRIS_DATA=/srv/iris # already in ~/.bashrc
-uv run iris data init      # creates /srv/iris/{store,fragments,runs,cache,references,registry}
-make check                 # lint, types, architecture checks, tests
-make refs                  # download + pin ATT&CK v20, NIST 800-53 ... then verify
+git clone https://github.com/AbdulazizAr/UAEU-SP-Cyber-Range.git iris && cd iris
+make setup                       # uv sync + pre-commit hooks (needs internet once)
+export IRIS_DATA=/srv/iris       # where data goes (default /srv/iris); any writable path works
+uv run iris data init            # creates $IRIS_DATA/{store,fragments,runs,cache,references,registry}
+make check                       # lint, types, architecture checks, tests
+make refs                        # optional: download + pin ATT&CK, NIST 800-53 ... then verify
 ```
 
-Commit `uv.lock` and `configs/references/lock.json` after the first run.
+Quick smoke test (about a minute, no Docker):
+
+```bash
+uv run iris package batch --count 20 --out /tmp/iris-demo     # build, verify, score the D6 baseline
+```
+
+After the first `make refs`, commit `configs/references/lock.json` so every machine pins the
+same reference bytes.
 
 ## Layout
 
@@ -30,8 +39,12 @@ src/iris/
   devtools/     architecture checks run in CI
   generator/    sampler, compiler, GRC (reality, record, timeline), enterprise files, posture
   packager/     scenario packages: visible + hidden planes, manifests, Merkle, verify (no-peek)
-  oracle/       reference keys (D6 now; D1, D2, D4 with telemetry)
-  evaluator/    scoring against the keys (D6 now)
+  oracle/       reference keys: D6 (all packages), D1, D2, D4 (packages with telemetry)
+  evaluator/    scoring against the keys: d6.py, decisions.py (D1, D2, D4)
+  compose/      record-and-compose: fragments realised and re-timed onto new enterprises
+  fragments/    recorded activity fragments and the token abstraction
+  live/         live range: deploy, health gate, activity plans, recording
+  dataset/      splits by group, coverage, drift tests, packing
   engine/       IRIS Engine, visible plane only (baselines/ now; models in P8)
 configs/references/   registry.yaml (what we use), lock.json (exact bytes)
 examples/             golden_v0.spec.yaml
@@ -41,7 +54,7 @@ tests/                unit tests + small reference fixtures
 ## Rules the code enforces
 
 - **No real clock.** Only `iris/core/vclock.py` may read wall time; everything else uses `VClock`. Checked by `iris check` / `make arch`.
-- **Import boundaries.** `engine` never imports `generator`, `oracle` or `evaluator`; `oracle` never imports `engine`; `contracts` and `core` are leaves.
+- **Import boundaries.** `engine` never imports `generator`, `oracle` or `evaluator`; `oracle` never imports `engine`; `contracts` and `core` are leaves. Relative imports are resolved, so `from ..generator import x` is caught too.
 - **Strict contracts.** Unknown fields are errors on the producer side; timestamps are UTC-aware and serialised with `Z`.
 - **Pinned references.** A reference is usable only when its file matches the SHA-256 in `lock.json`.
 
@@ -123,6 +136,34 @@ uv run iris baseline d6 <package> --out /tmp/dec.jsonl
 uv run iris eval d6 <package> --decisions /tmp/dec.jsonl
 ```
 
+`eval d6` reports `recall` (right record named) and `strict_recall` (right record and right
+flaw type), per-class recall, precision, type accuracy, harm-weighted recall, clean-episode
+false alarms, unsupported DC4 claims, `unscored` decisions (for episodes the package does not
+contain) and Brier. On context packages DC2 is near-unfindable by construction (its evidence is
+telemetry/posture), so judge DC2 on train/gold packages.
+
+Composed (`train`) and live (`gold`) packages also carry D1, D2 and D4 keys:
+
+```bash
+uv run iris eval d1 <package> --decisions dec.jsonl    # classification
+uv run iris eval d2 <package> --decisions dec.jsonl    # priority
+uv run iris eval d4 <package> --decisions dec.jsonl    # control recommendation
+uv run iris eval all <package> --decisions dec.jsonl   # D1, D2, D4 and D6 together
+```
+
+Harmful decisions (contract 14.3) are reported separately from accuracy. A malformed line in
+`decisions.jsonl` is reported with its line number.
+
+### Reproducible releases
+
+The visible plane is byte-deterministic per seed. Set `SOURCE_DATE_EPOCH` (integer seconds) to
+pin the one real-time field in the hidden manifest, and whole packages become byte-identical:
+
+```bash
+SOURCE_DATE_EPOCH=1767225600 uv run iris package batch --count 1000 --out /srv/iris/store/context
+./build_final_dataset.sh 1000    # sets SOURCE_DATE_EPOCH itself and records it in MANIFEST.json
+```
+
 ## P1 spikes (need Docker + internet, about 15-25 minutes the first time)
 
 ```bash
@@ -136,3 +177,16 @@ Each run prints pass/fail per check and writes `results.json` plus logs to `$IRI
 ## Reference notes
 
 `fetch: url` references download automatically. `fetch: manual` ones (CTID mappings, CSF 2.0 export, ISO 27001 and CIS ID lists) must be placed at `$IRIS_DATA/references/<id>/<filename>` and then `iris refs fetch <id>` pins them. URLs marked `url_verified: false` could not be checked from the build environment; if one fails, fix the URL in `registry.yaml`.
+
+## Known limitations
+
+- **Live services:** web, app, database and DNS servers are built live; mail, file, directory
+  and backup servers exist in the catalog but not yet as live images.
+- **Attack families:** F1 (web compromise) and F2 (password guessing) run end to end; F4
+  (lateral movement) and F5 (exfiltration) are declared but inactive.
+- **Outcome verification:** a malicious action's outcome comes from the action catalog
+  (`iris.live.attacks.ACTION_OUTCOME`), not from checking its post-condition on the range.
+- **Decisions scored:** D1, D2, D4 and D6. D3, D5 and D7 are planned for v1.1. Evidence
+  citations (`evidence_event_ids`) are required but not yet checked by the evaluator.
+- **Realism:** telemetry comes from a real Wazuh/Suricata stack, but traffic and attacks are
+  scripted; no comparison with a public SOC dataset has been made yet.
