@@ -102,15 +102,34 @@ def _sub_strings(value: Any, replace: Any) -> Any:
     return value
 
 
+_IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+def _matcher(concrete: str) -> re.Pattern[str]:
+    """IPv4 addresses match only as whole addresses: ``10.0.0.1`` must not match inside
+    ``10.0.0.137`` or ``10.0.0.254`` (an unmapped neighbour, e.g. the Docker bridge),
+    which would otherwise turn into a token followed by stray digits and realise as a
+    fake address. Other values (hostnames, usernames, secrets) match as substrings."""
+    esc = re.escape(concrete)
+    if _IPV4_RE.match(concrete):
+        return re.compile(rf"(?<![\d.]){esc}(?!\d|\.\d)")
+    return re.compile(esc)
+
+
 def abstract_value(value: Any, mapping: list[tuple[str, str]]) -> Any:
-    """Replace concrete substrings with tokens. ``mapping`` is (concrete, token), applied
-    longest concrete first so that 10.0.0.1 never clobbers 10.0.0.10."""
-    ordered = sorted(mapping, key=lambda kv: len(kv[0]), reverse=True)
+    """Replace concrete values with tokens. ``mapping`` is (concrete, token), applied
+    longest concrete first so that 10.0.0.1 never clobbers 10.0.0.10; IPv4 addresses are
+    additionally matched on address boundaries only."""
+    # tokens are used as literal replacement text (backslashes escaped for re.sub)
+    ordered = [
+        (_matcher(c), tok.replace("\\", "\\\\"))
+        for c, tok in sorted(mapping, key=lambda kv: len(kv[0]), reverse=True)
+        if c
+    ]
 
     def rep(s: str) -> str:
-        for concrete, tok in ordered:
-            if concrete:
-                s = s.replace(concrete, tok)
+        for pattern, tok in ordered:
+            s = pattern.sub(tok, s)
         return s
 
     return _sub_strings(value, rep)

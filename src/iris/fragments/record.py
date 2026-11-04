@@ -25,6 +25,7 @@ from iris.fragments.model import Fragment, FragmentTruth
 from iris.generator.eve import parse_eve_ts
 from iris.generator.secrets import scenario_secrets
 from iris.live.activity import build_plan
+from iris.live.attacks import outcome_of_action
 from iris.live.health import Target
 from iris.spikes.common import sh
 
@@ -107,7 +108,7 @@ def record_fragments(
         truth = FragmentTruth(
             label=action.label,
             family=action.family or ("persona_customer" if action.label == "benign" else "F0"),
-            outcome="success" if action.label == "malicious" else "n/a",
+            outcome=outcome_of_action(action.name, action.label),
             technique=action.technique,
             weakness_module=_module_of(spec, action.weakness_id),
             stage=action.stage,
