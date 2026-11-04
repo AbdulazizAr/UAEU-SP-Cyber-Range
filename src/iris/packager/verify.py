@@ -1,7 +1,10 @@
 """Verify a package: integrity, contract validity and the no-peek audit.
 
 - Integrity: every visible file is listed with the right SHA-256, nothing extra is present,
-  and the Merkle root and package ID recompute. The same holds for the hidden plane.
+  and the Merkle root and package ID recompute. The same holds for the hidden plane,
+  including its Merkle root.
+- Truth consistency: the GRC diff audit stored in the hidden plane passed (every
+  difference between the faithful and the recorded registers is explained).
 - Contract: every known visible file validates against its v2.0 model.
 - No peek: no hidden-only token appears in visible bytes. That covers seeds, group_id,
   flaw, event, item and review IDs, generator internals, image names and maturity.
@@ -130,9 +133,24 @@ def verify_package(root: Path) -> VerifyReport:
     hlisted = {k: v.removeprefix("sha256:") for k, v in full.get("hidden_hashes", {}).items()}
     if set(hpresent) != set(hlisted):
         rep.fail("hidden file list does not match its manifest")
+    hactual: dict[str, str] = {}
     for rel, path in hpresent.items():
-        if hlisted.get(rel) != sha256_hex(path.read_bytes()):
+        hactual[rel] = sha256_hex(path.read_bytes())
+        if hlisted.get(rel) != hactual[rel]:
             rep.fail(f"hidden hash mismatch {rel}")
+    if "hidden_merkle_root" in full and merkle_root(hactual.items()) != full["hidden_merkle_root"]:
+        rep.fail("hidden Merkle root does not match")
+
+    # ---- truth consistency
+    audit_path = hid / "truth" / "grc_diff_audit.json"
+    if audit_path.exists():
+        try:
+            audit = _load(audit_path)
+        except (ValueError, UnicodeDecodeError) as exc:
+            rep.fail(f"truth/grc_diff_audit.json unreadable: {exc}")
+        else:
+            if not audit.get("ok", False):
+                rep.fail("GRC diff audit failed: recorded registers contain unexplained changes")
 
     # ---- contract
     for rel, path in present.items():
@@ -143,6 +161,8 @@ def verify_package(root: Path) -> VerifyReport:
         cls, is_list = model
         try:
             data = _load(path)
+            if is_list and not isinstance(data, list):
+                raise ValueError("expected a JSON list")
             if is_list:
                 for row in data:
                     cls(**row)
@@ -157,7 +177,11 @@ def verify_package(root: Path) -> VerifyReport:
     secrets.add(str(full.get("group_id", "")))
     secrets.discard("")
     for rel, path in [(VISIBLE_MANIFEST, vis / VISIBLE_MANIFEST), *present.items()]:
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            rep.fail(f"{rel}: not UTF-8 text (the visible plane is JSON only)")
+            continue
         for s in secrets:
             if s in text:
                 rep.fail(f"{rel}: contains a hidden seed or group id")

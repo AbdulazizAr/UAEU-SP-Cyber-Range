@@ -25,7 +25,7 @@ from iris.contracts.spec import ScenarioSpec
 from iris.contracts.visible import EpisodeRef, VirtualCalendar, VisibleManifest
 from iris.core.hashing import episode_id, merkle_root, package_id, sha256_hex
 from iris.core.seeds import SeedSet
-from iris.core.vclock import iso_z, real_utc_now
+from iris.core.vclock import iso_z, provenance_utc_now
 from iris.generator.catalog import load_catalog
 from iris.generator.enterprise import visible_files as enterprise_files
 from iris.generator.grc.reality import GRC_FORMULA_VERSION
@@ -225,7 +225,7 @@ def write_package(a: Assembled, out_dir: Path, options: PackageOptions | None = 
             "size": a.spec.organization.size.value,
         },
         "epss_snapshots": a.meta.get("epss_snapshots", []),
-        "created_at_real": iso_z(real_utc_now()),  # provenance only; never in the visible plane
+        "created_at_real": iso_z(provenance_utc_now()),  # provenance only; SOURCE_DATE_EPOCH pins it
         "visible_merkle_root": vroot,
         "hidden_hashes": {k: f"sha256:{v}" for k, v in hid_hashes.items()},
         "hidden_merkle_root": merkle_root(hid_hashes.items()),
