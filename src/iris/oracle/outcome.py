@@ -15,7 +15,7 @@ from typing import Any
 
 from iris.contracts.spec import ScenarioSpec
 from iris.core.vclock import iso_z, parse_iso
-from iris.live.attacks import FAMILIES
+from iris.live.attacks import FAMILIES, outcome_of_action
 
 OUTCOME_VERSION = "outcome-0.1.0"
 
@@ -98,7 +98,7 @@ def from_plan_truth(
                 label=a.get("label", "benign"),
                 family=a.get("family") or "",
                 technique=a.get("technique"),
-                outcome="success" if a.get("label") == "malicious" else "n/a",
+                outcome=outcome_of_action(a.get("name"), a.get("label", "benign")),
                 weakness_module=wk.module if wk else None,
                 expected_rules=list(a.get("expect_rules", [])),
                 asset_id=a.get("target_asset"),

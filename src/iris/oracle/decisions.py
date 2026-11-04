@@ -32,7 +32,7 @@ SCENARIO_CLASS = {
 }
 _PRIORITY_BY_CRIT = {1: "LOW", 2: "LOW", 3: "MEDIUM", 4: "HIGH", 5: "HIGH"}
 _BUMP = {"LOW": "MEDIUM", "MEDIUM": "HIGH", "HIGH": "CRITICAL", "CRITICAL": "CRITICAL"}
-#: control recorded state -> the D4 action a correct recommendation takes.
+#: control state -> the D4 action a correct recommendation takes.
 _ACTION_BY_STATE = {
     "missing": "implement",
     "partial": "strengthen",
@@ -97,9 +97,14 @@ def build_d2_key(activity: EpisodeActivity) -> dict[str, Any]:
 
 
 def build_d4_key(activity: EpisodeActivity, control_states: dict[str, str]) -> dict[str, Any]:
-    """One recommendation per enabling control exploited this episode. The action follows
-    the control's recorded state; an exploited-yet-implemented control is recommended for
-    verification (the exploit proves it is not truly effective)."""
+    """One recommendation per enabling control exploited this episode.
+
+    ``control_states`` is the control's TRUE state from GRC reality (callers pass
+    ``GrcReality.controls[...].state``), not what the register records: the correct fix
+    depends on what is really missing, while the recorded state is exactly what the
+    Engine has to see through. The action follows that true state; an exploited-yet-
+    implemented control is recommended for verification (the exploit proves it is not
+    truly effective)."""
     recs: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in activity.malicious:
@@ -112,7 +117,8 @@ def build_d4_key(activity: EpisodeActivity, control_states: dict[str, str]) -> d
             {
                 "control_id": cid,
                 "action": _ACTION_BY_STATE.get(state, "implement"),
-                "recorded_state": state,
+                "control_state": state,
+                "state_source": "reality",
                 "because": {
                     "weakness_module": item.weakness_module,
                     "asset_id": item.asset_id,
