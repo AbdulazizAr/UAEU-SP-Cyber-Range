@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from iris.contracts.common import AssetRole, DataClass
+from iris.contracts.common import AssetRole
 from iris.contracts.spec import AssetSpec, ScenarioSpec
 from iris.core.seeds import SeedSet
 from iris.settings import repo_root
@@ -278,7 +278,7 @@ def _business_context(spec: ScenarioSpec, seeds: SeedSet, crit: dict[str, int]) 
     rng = seeds.stream("identity", "owners")
     org = spec.organization
     humans = [i for i in spec.identities if i.kind == "human"]
-    it = [i.username for i in humans if i.department == "IT"] or [humans[0].username] if humans else []
+    it = ([i.username for i in humans if i.department == "IT"] or [humans[0].username]) if humans else []
     by_dept: dict[str, list[str]] = {}
     for i in humans:
         by_dept.setdefault(i.department, []).append(i.username)
@@ -355,6 +355,8 @@ def _risks(
         cf = max(0.4, 1 - 0.08 * states.count("implemented") - 0.04 * states.count("partial"))
         top = max(members, key=lambda a: (a.true_criticality, a.asset_id))
         rid = f"RSK-{key.split('-')[1]}-001"
+        if rid in out:  # two templates sharing a code would silently overwrite a risk
+            raise ValueError(f"risk template {key} collides with {out[rid].template} on {rid}")
         out[rid] = RiskReality(
             risk_id=rid,
             template=key,
@@ -415,5 +417,4 @@ def _exceptions(
             valid_until=valid_until,
             compensating=compensating,
         )
-    _ = DataClass  # keeps the enum import meaningful for readers of asset data classes
     return out

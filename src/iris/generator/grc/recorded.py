@@ -119,7 +119,6 @@ class Recorder:
 
 
 def _faithful(spec: ScenarioSpec, reality: GrcReality, style: GrcStyle, rng: random.Random) -> dict[str, Any]:
-    cat = load_control_catalog()
     start = reality.calendar_start
     cadence = CADENCE_DAYS[style.cadence]
     svc_by_asset: dict[str, list[str]] = {}
@@ -228,7 +227,6 @@ def _faithful(spec: ScenarioSpec, reality: GrcReality, style: GrcStyle, rng: ran
             "compensating_controls": e.compensating,
             "recorded_at": e.valid_from,
         }
-    _ = cat
     return {
         "assets": assets,
         "business_context": context,
