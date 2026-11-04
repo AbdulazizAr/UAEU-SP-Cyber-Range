@@ -95,7 +95,7 @@ def unpack_db(tarball: Path, sha256: str, data_dir: Path | None = None) -> DbSna
         with tarfile.open(tarball, "r:gz") as tar:
             tar.extractall(root, filter="data")
     meta_file = root / "db" / "metadata.json"
-    updated = json.loads(meta_file.read_text())["UpdatedAt"] if meta_file.exists() else None
+    updated = json.loads(meta_file.read_text(encoding="utf-8"))["UpdatedAt"] if meta_file.exists() else None
     return DbSnapshot(root, updated, sha256)
 
 
@@ -106,7 +106,7 @@ def scan_image(image: str, db: DbSnapshot, data_dir: Path | None = None, force: 
     if digest is None:
         raise RuntimeError(f"image {image} is not built on this machine")
     if target.exists() and not force:
-        cached = json.loads(target.read_text())
+        cached = json.loads(target.read_text(encoding="utf-8"))
         if cached.get("image_id") == digest and cached.get("db", {}).get("sha256") == db.sha256:
             return target
     cache_dir(data_dir).mkdir(parents=True, exist_ok=True)
@@ -117,7 +117,7 @@ def scan_image(image: str, db: DbSnapshot, data_dir: Path | None = None, force: 
         tar_name = f"{safe_name(image)}.tar"
         _run(["docker", "save", "-o", str(tdir / "in" / tar_name), image])
         _run(scan_cmd(db.root, tdir / "in", tar_name, tdir / "out", "report.json"))
-        report = json.loads((tdir / "out" / "report.json").read_text())
+        report = json.loads((tdir / "out" / "report.json").read_text(encoding="utf-8"))
     report.pop("CreatedAt", None)  # wall-clock time of the scan run: never part of a scenario
     rep = parse_trivy(report, image=image)
     wrapper = {
