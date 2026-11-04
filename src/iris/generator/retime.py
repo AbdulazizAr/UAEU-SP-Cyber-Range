@@ -43,13 +43,21 @@ def format_syslog(dt: datetime) -> str:
 
 
 def _syslog_dt(match: re.Match[str], ref: datetime) -> datetime:
-    """Syslog stamps carry no year: take the one that puts the stamp closest to ``ref``."""
+    """Syslog stamps carry no year: take the one that puts the stamp closest to ``ref``.
+
+    Years in which the date does not exist (``Feb 29`` outside a leap year) are skipped
+    instead of raising, so a leap-day capture never crashes the export."""
     mon = MONTHS.index(match["mon"]) + 1
+    day = int(match["day"])
     h, m, s = (int(x) for x in match["hms"].split(":"))
-    candidates = [
-        datetime(y, mon, int(match["day"]), h, m, s, tzinfo=UTC)
-        for y in (ref.year - 1, ref.year, ref.year + 1)
-    ]
+    candidates: list[datetime] = []
+    for y in (ref.year - 1, ref.year, ref.year + 1):
+        try:
+            candidates.append(datetime(y, mon, day, h, m, s, tzinfo=UTC))
+        except ValueError:
+            continue
+    if not candidates:  # e.g. "Feb 30": not a real date in any year
+        raise ValueError(f"invalid syslog date {match.group(0)!r}")
     return min(candidates, key=lambda c: abs(c - ref))
 
 
@@ -63,13 +71,16 @@ def shift_syslog_prefix(text: str, offset: timedelta, ref: datetime) -> str:
 def shift_iso_stamps(text: str, offset: timedelta) -> str:
     def repl(m: re.Match[str]) -> str:
         tz = m["tz"]
-        stamp = f"{m['date']}T{m['time']}{m['frac'] or ''}"
+        raw_frac = m["frac"] or ""  # includes the dot, e.g. ".123" or ".123456789"
+        digits = raw_frac[1:]
+        micro, extra = digits[:6], digits[6:]  # datetime holds microseconds; keep the rest verbatim
+        stamp = f"{m['date']}T{m['time']}{'.' + micro.ljust(6, '0') if micro else ''}"
         if tz in (None, "Z"):
             dt = datetime.fromisoformat(stamp).replace(tzinfo=UTC)
         else:
             dt = datetime.fromisoformat(stamp + (tz if ":" in tz else f"{tz[:3]}:{tz[3:]}"))
         out = (dt + offset).astimezone(dt.tzinfo)
-        frac = f".{out.microsecond:06d}"[: len(m["frac"])] if m["frac"] else ""
+        frac = (f".{out.microsecond:06d}"[: len(micro) + 1] + extra) if raw_frac else ""
         return f"{out:%Y-%m-%dT%H:%M:%S}{frac}{tz or ''}"
 
     return ISO_RE.sub(repl, text)

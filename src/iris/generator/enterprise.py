@@ -21,15 +21,14 @@ from iris.contracts.visible import (
     TopologyZone,
 )
 from iris.generator.grc.recorded import GrcBundle
-
-SUN_THU = {"Asia/Riyadh", "Asia/Kuwait", "Asia/Qatar", "Asia/Bahrain"}
+from iris.generator.sampler import SUN_THU_TIMEZONES
 
 
 def organization(spec: ScenarioSpec) -> Organization:
     org = spec.organization
     week = (
         ["sun", "mon", "tue", "wed", "thu"]
-        if org.timezone in SUN_THU
+        if org.timezone in SUN_THU_TIMEZONES
         else ["mon", "tue", "wed", "thu", "fri"]
     )
     return Organization(

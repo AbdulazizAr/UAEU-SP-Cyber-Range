@@ -102,9 +102,11 @@ WORKSTATION_ROLES = frozenset({"workstation", "admin_workstation"})
 SITE_CODES = ("dxb", "auh", "ruh", "lon", "ber", "nyc", "sgp", "hq", "dc1")
 HOSTNAME_STYLES = ("{label}-{n:02d}", "{label}{n:02d}", "{site}-{label}-{n:02d}", "{site}{label}{n:02d}")
 USERNAME_STYLES = ("first.last", "flast", "firstl", "first_last")
-WORKWEEK = {
-    "Asia/Riyadh": (6, 0, 1, 2, 3),  # Sun-Thu (Mon=0)
-}
+#: Time zones whose organisations work Sunday to Thursday. The single source of truth for
+#: both episode placement here and the visible ``organization.json`` workweek.
+SUN_THU_TIMEZONES = frozenset({"Asia/Riyadh", "Asia/Kuwait", "Asia/Qatar", "Asia/Bahrain"})
+SUN_THU = (6, 0, 1, 2, 3)  # Mon=0
+WORKWEEK = dict.fromkeys(sorted(SUN_THU_TIMEZONES), SUN_THU)
 DEFAULT_WORKWEEK = (0, 1, 2, 3, 4)
 EXCLUDED_10_NETS = range(200, 204)  # docker default-address-pools 10.200.0.0/14
 
