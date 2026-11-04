@@ -120,8 +120,19 @@ def check_file(path: Path, rel: Path) -> list[Violation]:
         lineno = 0
         if isinstance(node, ast.Import):
             imported, lineno = [a.name for a in node.names], node.lineno
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             imported, lineno = [node.module], node.lineno
+        elif isinstance(node, ast.ImportFrom) and node.level > 0:
+            # resolve ``from ..generator import x`` against this module's package, so a
+            # relative import cannot slip past the boundary rules
+            pkg_parts = module.split(".") if rel.name == "__init__.py" else module.split(".")[:-1]
+            base = pkg_parts[: len(pkg_parts) - (node.level - 1)] if node.level - 1 <= len(pkg_parts) else []
+            if base:
+                if node.module:
+                    imported = [".".join([*base, node.module])]
+                else:  # ``from .. import generator``: each name is a submodule
+                    imported = [".".join([*base, a.name]) for a in node.names]
+                lineno = node.lineno
         for name in imported:
             for pkg, banned in FORBIDDEN_IMPORTS.items():
                 if module == pkg or module.startswith(pkg + "."):
