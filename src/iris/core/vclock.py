@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
+import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -54,6 +55,21 @@ def real_utc_now() -> datetime:
     """The real wall clock. Use only for provenance (e.g. when a reference file was
     downloaded) and for episode offsets; never for scenario content."""
     return datetime.now(UTC)
+
+
+def provenance_utc_now() -> datetime:
+    """Creation time for provenance fields in package manifests.
+
+    Honours ``SOURCE_DATE_EPOCH`` (the reproducible-builds convention): when it is set,
+    the same seeds produce byte-identical packages, hidden manifest included. Otherwise
+    it is the real clock."""
+    epoch = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
+    if epoch:
+        try:
+            return datetime.fromtimestamp(int(epoch), UTC)
+        except (ValueError, OverflowError, OSError) as exc:
+            raise TimeError(f"SOURCE_DATE_EPOCH must be integer seconds, got {epoch!r}") from exc
+    return real_utc_now()
 
 
 @dataclass(order=True)
