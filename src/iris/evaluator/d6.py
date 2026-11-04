@@ -5,8 +5,13 @@ match by hostname or IP). Each flaw can be matched once, highest confidence firs
 - DC1-DC3 flaws count toward recall.
 - DC4 flaws have no visible evidence by design. A confident claim on one is
   "unsupported", neither a hit nor a false positive.
-- Claims on noise-touched records are "noise claims", not false positives.
-Harm-weighted recall weights high 3, medium 2, low 1.
+- Claims on noise-touched records are "noise claims", not false positives. They do not
+  enter precision, only the Brier score (a confident claim on noise is still penalised).
+- When one record carries several flaws, a claim is matched to the flaw of the claimed
+  type first, so a correct claim is never charged as a type error because of ordering.
+Harm-weighted recall weights high 3, medium 2, low 1. ``recall`` counts a flaw as found
+when the right record is named; ``strict_recall`` also requires the right flaw type.
+Decisions for episodes the package does not contain are counted as ``unscored``.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ class D6Score:
     noise_claims: int = 0
     unsupported_dc4: int = 0
     abstained: int = 0
+    unscored: int = 0
     clean_with_alarm: int = 0
     harm_total: float = 0.0
     harm_found: float = 0.0
@@ -60,6 +66,7 @@ class D6Score:
             "episodes": self.episodes,
             "flaws_by_class": dict(sorted(self.flaws.items())),
             "recall": round(self.tp / counted, 4) if counted else None,
+            "strict_recall": round(self.type_correct / counted, 4) if counted else None,
             "recall_by_class": {c: round(self.found[c] / self.flaws[c], 4) for c in COUNTED if self.flaws[c]},
             "precision": round(self.tp / claims, 4) if claims else None,
             "type_accuracy": round(self.type_correct / self.tp, 4) if self.tp else None,
@@ -71,6 +78,7 @@ class D6Score:
                 round(self.clean_with_alarm / self.clean_episodes, 4) if self.clean_episodes else None
             ),
             "abstained": self.abstained,
+            "unscored": self.unscored,
             "brier": round(sum(self.brier_terms) / len(self.brier_terms), 4) if self.brier_terms else None,
         }
 
@@ -102,7 +110,10 @@ def score_episode(key: dict[str, Any], decisions: list[DecisionRecord]) -> D6Sco
             s.abstained += 1 if d.status == "ABSTAINED" else 0
             continue
         ref = norm_ref(d.payload.record_ref)
-        hit = next((f for f in flaws if f["flaw_id"] not in matched and ref in alias[f["flaw_id"]]), None)
+        open_on_ref = [f for f in flaws if f["flaw_id"] not in matched and ref in alias[f["flaw_id"]]]
+        same_type = [f for f in open_on_ref if f["module"] == d.payload.flaw_type]
+        pool = same_type or open_on_ref
+        hit: dict[str, Any] | None = pool[0] if pool else None
         conf = d.confidence or 0.0
         if hit is not None:
             matched.add(hit["flaw_id"])
@@ -132,6 +143,9 @@ def load_keys(package_root: Path) -> list[dict[str, Any]]:
 
 def score_package(package_root: Path, decisions: list[DecisionRecord]) -> D6Score:
     total = D6Score()
-    for key in load_keys(package_root):
+    keys = load_keys(package_root)
+    for key in keys:
         total.merge(score_episode(key, decisions))
+    known = {k["episode_id"] for k in keys}
+    total.unscored += sum(1 for d in decisions if d.type == "D6" and d.episode_id not in known)
     return total
