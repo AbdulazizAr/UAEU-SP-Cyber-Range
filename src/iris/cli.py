@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -781,8 +782,14 @@ def range_down(project: str | None, all_: bool) -> None:
     """Remove a kept range (all containers, networks and volumes with its label)."""
     from iris.live.deploy import down_project, running_projects
 
-    targets = sorted(running_projects()) if all_ else [project] if project else []
-    if not targets:
+    if all_:
+        targets = sorted(running_projects())
+        if not targets:
+            click.echo("no iris ranges on this machine")
+            return
+    elif project:
+        targets = [project]
+    else:
         raise click.UsageError("give a PROJECT or --all")
     for p in targets:
         left = down_project(p)
@@ -991,6 +998,366 @@ def soc_profile(master: int, live: bool) -> None:
         click.echo(f"  {host[aid]:12} sources {','.join(real):40} fim={fim} sca={sca}{extra}")
     for g in belief_gaps(prof, recorded):
         click.echo(f"  gap {g.gap_id} {g.kind:22} {host[g.asset_id]:12} {g.detail}")
+
+
+# ---------------------------------------------------------------- fragments (P4)
+
+
+@main.group()
+def fragments() -> None:
+    """Record and inspect activity fragments (record-and-compose)."""
+
+
+def _record_one(master: int, no_build: bool, on_phase: Callable[[str], None] | None = None) -> list[Any]:
+    """Deploy one enterprise, record a fragment per activity, always tear down. Teardown is
+    robust to a failed or interrupted health check (never masks the real error). ``on_phase``
+    is called with a short label as each stage begins, for live status display."""
+    from iris.fragments.record import record_fragments
+    from iris.generator.sampler import SampleOverrides, sample_spec
+    from iris.live import deploy as d
+    from iris.live.health import Target
+
+    def phase(label: str) -> None:
+        if on_phase is not None:
+            on_phase(label)
+
+    seeds = SeedSet.from_master(master)
+    spec = sample_spec(seeds, SampleOverrides(live=True))
+    run = d.new_run(spec)
+    frags: list[Any] = []
+    try:
+        if not no_build:
+            phase("building images")
+            d.build(run)
+        phase("deploying containers")
+        d.deploy(run)
+        phase("health gate")
+        if d.check(run, light=True):
+            phase("recording activity")
+            frags = record_fragments(Target(spec, run.project, run.compiled.meta), seeds.group_id())
+    finally:
+        phase("tearing down")
+        d.teardown(run)
+        d.save(run)
+    return frags
+
+
+@fragments.command("record")
+@click.option("--master", type=int, required=True)
+@click.option("--no-build", is_flag=True)
+def fragments_record(master: int, no_build: bool) -> None:
+    """Deploy one enterprise, record a fragment per activity, tear down."""
+    from iris.live import deploy as d
+    from iris.spikes.common import SpikeError, require_docker
+
+    require_docker()
+    if sorted(d.running_projects()):
+        raise click.ClickException("other range projects are present (iris range down --all)")
+    group = SeedSet.from_master(master).group_id()
+    try:
+        frags = _record_one(master, no_build)
+    except SpikeError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"recorded {len(frags)} fragments into group {group}")
+    for f in frags:
+        click.echo(
+            f"  {f.fragment_id}  {f.truth.label:9} {f.truth.family:18}"
+            f" {len(f.records)} records, {len(f.tokens)} tokens"
+        )
+    sys.exit(0 if frags else 1)
+
+
+@fragments.command("batch")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=6, show_default=True)
+@click.option("--no-build", is_flag=True, help="Reuse already-built images (faster after the first).")
+def fragments_batch(start: int, count: int, no_build: bool) -> None:
+    """Record a diverse fragment library across a range of seeds in one pass.
+
+    Each seed gets its own range, torn down before the next. One failed build does not abort
+    the run; a per-seed summary and the library totals are printed at the end."""
+    from iris.cli_ui import Progress, Spinner, fmt_dur, footer, header, result_line
+    from iris.fragments.library import index_library
+    from iris.live import deploy as d
+    from iris.spikes.common import require_docker
+
+    require_docker()
+    for p in sorted(d.running_projects()):
+        d.down_project(p)  # start from a clean machine
+
+    header("IRIS · recording fragment library", f"{count} seeds (master {start} to {start + count - 1})")
+    prog = Progress(total=count)
+    recorded = 0
+    groups: set[str] = set()
+    errors: dict[int, str] = {}
+    for i, master in enumerate(range(start, start + count), start=1):
+        group = SeedSet.from_master(master).group_id()
+        spin = Spinner(f"[{i}/{count}] {group}  starting…")
+        with spin:
+
+            def on_phase(ph: str, s: Spinner = spin, i: int = i, g: str = group) -> None:
+                s.set_label(f"[{i}/{count}] {g}  {ph}…")
+
+            try:
+                frags = _record_one(master, no_build, on_phase=on_phase)
+            except Exception as exc:  # keep going; one bad build must not stop the whole batch
+                errors[master] = str(exc)
+                prog.tick()
+                result_line(False, f"[{i}/{count}] {group}", f"failed — {exc}", spin.elapsed, prog)
+                continue
+        prog.tick()
+        recorded += len(frags)
+        if frags:
+            groups.add(group)
+        labels: dict[str, int] = {}
+        for f in frags:
+            labels[f.truth.label] = labels.get(f.truth.label, 0) + 1
+        detail = (
+            f"{len(frags)} fragments (" + ", ".join(f"{n} {k}" for k, n in sorted(labels.items())) + ")"
+            if frags
+            else "no fragments (health gate did not pass)"
+        )
+        result_line(bool(frags), f"[{i}/{count}] {group}", detail, spin.elapsed, prog)
+
+    idx = index_library()
+    click.echo()
+    click.secho(f"  library: {idx.total} fragments across {len(idx.by_group)} groups", bold=True)
+    for fam, fr in sorted(idx.by_family.items()):
+        click.secho(f"    {fam:20} {len(fr):4}", dim=True)
+    ok = not errors
+    footer(
+        f"done · {len(groups)} ok, {len(errors)} failed · {recorded} new fragments · {fmt_dur(prog.elapsed)}",
+        ok,
+    )
+    if errors:
+        click.secho(
+            f"  failed seeds: {sorted(errors)} (rerun: iris fragments record --master N)", fg="yellow"
+        )
+    sys.exit(0 if recorded else 1)
+
+
+@fragments.command("list")
+def fragments_list() -> None:
+    """Summarise the fragment library on this machine."""
+    from iris.fragments.library import index_library
+
+    idx = index_library()
+    click.echo(f"{idx.total} fragments across {len(idx.by_group)} groups")
+    for fam, frags in sorted(idx.by_family.items()):
+        labels: dict[str, int] = {}
+        for f in frags:
+            labels[f.truth.label] = labels.get(f.truth.label, 0) + 1
+        click.echo(f"  {fam:20} {len(frags):4}  {labels}")
+
+
+# ---------------------------------------------------------------- dataset (P7)
+
+
+def _dataset_dir(out: Path | None) -> Path:
+    return out or paths().store / "dataset"
+
+
+def _ood_from_options(
+    topology: str | None, industry: str | None, family: str | None, style: str | None
+) -> Any:
+    from iris.dataset.splits import OodConfig
+
+    def s(v: str | None) -> frozenset[str]:
+        return frozenset(x for x in (v or "").split(",") if x)
+
+    return OodConfig(topologies=s(topology), industries=s(industry), families=s(family), grc_styles=s(style))
+
+
+@main.group()
+def dataset() -> None:
+    """Assemble datasets: compose training packages, report splits, coverage and drift."""
+
+
+@dataset.command("build")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=20, show_default=True)
+@click.option("--ood-topology", help="Comma-separated held-out topology archetypes.")
+@click.option("--ood-industry", help="Comma-separated held-out industries.")
+@click.option("--ood-family", help="Comma-separated held-out attack families (F1..F9).")
+@click.option("--ood-style", help="Comma-separated held-out GRC styles.")
+@click.option("--reuse-cap", type=int, default=5, show_default=True, help="Max placements per fragment.")
+@click.option(
+    "--out", type=click.Path(file_okay=False, path_type=Path), help="Default: $IRIS_DATA/store/dataset"
+)
+def dataset_build(
+    start: int,
+    count: int,
+    ood_topology: str | None,
+    ood_industry: str | None,
+    ood_family: str | None,
+    ood_style: str | None,
+    reuse_cap: int,
+    out: Path | None,
+) -> None:
+    """Compose a training package per seed from the fragment library, then write the
+    splits and coverage reports. Needs a recorded fragment library (iris fragments record)."""
+    from iris.cli_ui import Spinner, fmt_dur, footer, header
+    from iris.dataset.build import build_dataset, load_library
+
+    library = load_library()
+    if not library:
+        raise click.ClickException("the fragment library is empty; record fragments first")
+    ood = _ood_from_options(ood_topology, ood_industry, ood_family, ood_style)
+    base = _dataset_dir(out)
+    header("IRIS · building dataset", f"{count} seeds · library {len(library)} fragments")
+    spin = Spinner("starting…")
+    try:
+        with spin:
+            res = build_dataset(
+                list(range(start, start + count)),
+                library,
+                ood,
+                base,
+                reuse_cap=reuse_cap,
+                progress=spin.set_label,
+            )
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    s = res.summary()
+    cov = res.coverage
+    click.secho(f"  packages        {s['packages']}", bold=True)
+    click.echo(f"  in-distribution {s['in_distribution_groups']} groups")
+    click.echo(f"  ood sets        {', '.join(sorted(res.splits.ood_sets)) or '—'}")
+    click.echo(f"  episodes        {cov.episodes}  ({cov.by_verdict.get('malicious', 0)} with attacks)")
+    click.echo(
+        f"  decisions       D1={cov.decision_presence['D1']} D2={cov.decision_presence['D2']}"
+        f" D4={cov.decision_presence['D4']} D6={cov.decision_presence['D6']}"
+    )
+    click.echo(f"  families        {cov.by_family or '—'}")
+    for w in res.splits.warnings():
+        click.secho(f"  warning: {w}", fg="yellow")
+    footer(f"dataset ready at {base} · {fmt_dur(spin.elapsed)}")
+
+
+@dataset.command("splits")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=50, show_default=True)
+@click.option("--ood-topology")
+@click.option("--ood-industry")
+@click.option("--ood-family")
+@click.option("--ood-style")
+def dataset_splits(
+    start: int,
+    count: int,
+    ood_topology: str | None,
+    ood_industry: str | None,
+    ood_family: str | None,
+    ood_style: str | None,
+) -> None:
+    """Preview the split assignment for a range of seeds (no building)."""
+    from iris.dataset.build import grc_style_signature
+    from iris.dataset.splits import GroupProfile, build_splits
+    from iris.generator.grc.recorded import build_grc
+    from iris.generator.sampler import SampleOverrides, sample_spec
+    from iris.live.attacks import applicable_families
+
+    ood = _ood_from_options(ood_topology, ood_industry, ood_family, ood_style)
+    profiles: dict[str, GroupProfile] = {}
+    for m in range(start, start + count):
+        seeds = SeedSet.from_master(m)
+        spec = sample_spec(seeds, SampleOverrides(live=True))
+        grc = build_grc(spec, seeds)
+        profiles[seeds.group_id()] = GroupProfile(
+            group_id=seeds.group_id(),
+            topology=spec.archetype,
+            industry=spec.organization.industry.value,
+            families=tuple(applicable_families(spec)),
+            grc_style=grc_style_signature(grc.style),
+        )
+    click.echo(json.dumps(build_splits(list(profiles.values()), ood).to_dict(), indent=2))
+
+
+@dataset.command("coverage")
+@click.argument("root", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def dataset_coverage(root: Path) -> None:
+    """Coverage report over a built dataset's packages (reads the hidden evaluation keys)."""
+    from iris.dataset.coverage import coverage_report, from_keys
+
+    items = []
+    for pkg in sorted(root.glob("scenario-*")):
+        ek = pkg / "hidden" / "evaluation_key"
+        if not ek.exists():
+            continue
+        full = json.loads((pkg / "hidden" / "manifest.json").read_text())
+        tier = full.get("data_tier", "train")
+        for d1_path in sorted((ek / "d1").glob("*.json")):
+            eid = d1_path.stem
+            d1 = json.loads(d1_path.read_text())
+            d2 = json.loads((ek / "d2" / f"{eid}.json").read_text())
+            d4 = json.loads((ek / "d4" / f"{eid}.json").read_text())
+            d6_path = ek / "d6" / f"{eid}.json"
+            d6n = len(json.loads(d6_path.read_text()).get("flaws", [])) if d6_path.exists() else 0
+            items.append(from_keys(d1, d2, d4, tier, d6n))
+    click.echo(json.dumps(coverage_report(items).to_dict(), indent=2))
+
+
+@dataset.command("coverage-context")
+@click.argument("root", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def dataset_coverage_context(root: Path) -> None:
+    """Coverage over a context-tier store (e.g. store/context): reads the D6 keys only.
+
+    Use this for packages built by ``iris package batch`` (no telemetry, D6 only).
+    For a full dataset built by ``iris dataset build`` use ``coverage`` instead.
+    """
+    from iris.dataset.coverage import context_coverage_report
+
+    keys: list[dict[str, object]] = []
+    packages = 0
+    for pkg in sorted(root.glob("scenario-*")):
+        d6_dir = pkg / "hidden" / "evaluation_key" / "d6"
+        if not d6_dir.exists():
+            continue
+        packages += 1
+        for kp in sorted(d6_dir.glob("*.json")):
+            keys.append(json.loads(kp.read_text()))
+    if packages == 0:
+        raise click.ClickException(
+            f"no context packages with D6 keys under {root}; "
+            "build some with `iris package batch --count N --out <dir>`"
+        )
+    report = context_coverage_report(keys, packages=packages)
+    click.echo(json.dumps(report.to_dict(), indent=2))
+
+
+@dataset.command("drift")
+@click.argument("reference", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("candidate", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def dataset_drift(reference: Path, candidate: Path) -> None:
+    """Compare a candidate (composed) dataset against a reference (live Gold) with the
+    Part 8 drift tests. Exit non-zero when the candidate fails."""
+    from iris.dataset.drift import drift_report
+    from iris.dataset.features import dataset_features
+
+    rep = drift_report(dataset_features(reference), dataset_features(candidate))
+    click.echo(json.dumps(rep.to_dict(), indent=2))
+    sys.exit(0 if rep.ok else 1)
+
+
+@dataset.command("pack")
+@click.argument("store", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--out",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="output dir (default: STORE's parent)",
+)
+@click.option("--name", default="iris_d6_dataset", help="base name for the packed files")
+def dataset_pack(store: Path, out: Path | None, name: str) -> None:
+    """Pack a context store into one compressed archive + a compact label index.
+
+    Produces ``<name>.tar.xz`` (the whole dataset, ~30x smaller, stdlib LZMA — works offline)
+    and ``<name>.labels.jsonl.xz`` (one line per episode with its D6 ground truth, for the
+    training pipeline). Deterministic: same dataset, same bytes.
+    """
+    from iris.dataset.pack import pack_dataset
+
+    result = pack_dataset(store, out or store.parent, name)
+    click.echo(json.dumps(result.to_dict(), indent=2))
 
 
 # ---------------------------------------------------------------- spikes (P1)

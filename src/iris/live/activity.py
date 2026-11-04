@@ -22,6 +22,7 @@ from typing import Any
 
 from iris.contracts.spec import ScenarioSpec
 from iris.generator.secrets import Secrets
+from iris.live.attacks import annotate
 
 ACTIVITY_VERSION = "activity-0.1.0"
 
@@ -50,6 +51,9 @@ class Action:
     technique: str | None = None
     expect_rules: list[int] = field(default_factory=list)
     weakness_id: str | None = None
+    family: str | None = None  # attack family (F1..F9) for malicious actions
+    stage: str | None = None  # stage within the family
+    postcondition: str | None = None  # what success looks like (controller check)
 
     def truth(self) -> dict[str, Any]:
         return {
@@ -61,6 +65,9 @@ class Action:
             "technique": self.technique,
             "expect_rules": self.expect_rules,
             "weakness_id": self.weakness_id,
+            "family": self.family,
+            "stage": self.stage,
+            "postcondition": self.postcondition,
         }
 
 
@@ -240,4 +247,4 @@ def build_plan(spec: ScenarioSpec, secrets: Secrets, rng: Any) -> ActivityPlan:
         command=guesses,
     )
 
-    return ActivityPlan(ACTIVITY_VERSION, actions)
+    return annotate(ActivityPlan(ACTIVITY_VERSION, actions))

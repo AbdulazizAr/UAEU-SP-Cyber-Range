@@ -1,17 +1,24 @@
+# Python
 __pycache__/
 *.py[cod]
-.venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-dist/
-build/
 *.egg-info/
-.coverage
-htmlcov/
+.venv/
+venv/
 
-# Generated artifacts never live in git; they live under $IRIS_DATA (/srv/iris).
-/schemas/generated/
-/out/
-*.tar.zst
-*.pcap*
+# IRIS data (generated datasets live outside the repo, under $IRIS_DATA)
+/srv/iris/
+data/
+store/
+packed/
+releases/
+*.tar.xz
+*.tar.gz
+
+# tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# stray/backup files
+*.bak
+cli.py.bak

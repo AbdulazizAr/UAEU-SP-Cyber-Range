@@ -208,7 +208,7 @@ def check(run: LiveRun, light: bool = False) -> bool:
 
 def teardown(run: LiveRun) -> list[str]:
     """Stop everything with this project's label, then prove nothing is left."""
-    run.state.to("TEARING_DOWN")
+    run.state.begin_teardown()
     t0 = time.monotonic()
     logdir = run.run_dir / "logs"
     logdir.mkdir(exist_ok=True)

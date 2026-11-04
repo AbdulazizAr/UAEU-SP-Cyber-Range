@@ -68,3 +68,18 @@ def test_commands_are_shell_safe():
             assert "\n" not in a.command
             if ";" not in a.command:  # chained commands use ' ; ' as a shell separator
                 assert shlex.split(a.command)[0] == "curl"
+
+
+def test_attack_families_are_grounded():
+    from iris.live.attacks import FAMILIES, MODULE_FAMILY, applicable_families
+
+    spec, _ = _plan(9)
+    fams = applicable_families(spec)
+    assert "F2" in fams  # always applicable
+    for module in MODULE_FAMILY:
+        assert MODULE_FAMILY[module] in FAMILIES
+    # every malicious action with a family maps to an active family
+    _, plan = _plan(9)
+    for a in plan.actions:
+        if a.family:
+            assert FAMILIES[a.family]["active"]

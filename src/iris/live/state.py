@@ -41,6 +41,20 @@ class RunState:
         self.state = new
         self.save()
 
+    def begin_teardown(self, note: str = "") -> None:
+        """Move to TEARING_DOWN from any state, routing via FAILED when a direct
+        transition is not allowed (e.g. an interrupted or failed health check leaves the
+        run in CHECKING). Idempotent: a no-op once teardown has started or finished, so it
+        is always safe to call from a ``finally`` block."""
+        if self.state in ("TEARING_DOWN", "TORN_DOWN"):
+            return
+        if "TEARING_DOWN" not in TRANSITIONS.get(self.state, set()):
+            if "FAILED" in TRANSITIONS.get(self.state, set()):
+                self.to("FAILED", note=note or "forced teardown")
+            else:
+                raise StateError(f"cannot reach TEARING_DOWN from {self.state}")
+        self.to("TEARING_DOWN", note=note)
+
     def save(self) -> None:
         self.path.write_text(
             json.dumps({"project": self.project, "state": self.state, "history": self.history}, indent=2)

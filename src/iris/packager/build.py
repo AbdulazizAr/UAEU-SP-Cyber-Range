@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,18 @@ from iris.references.intel import Intel
 PACKAGE_FORMAT = "pkg-0.1.0"
 VISIBLE_MANIFEST = "manifest.visible.json"
 HIDDEN_MANIFEST = "manifest.json"
+
+
+@dataclass
+class PackageOptions:
+    """Tier and contents flags for the package manifests. The default is a v0 *context*
+    package (no telemetry); the composer and the live recorder override these."""
+
+    data_tier: str = "context"  # context | train | gold
+    telemetry: bool = False
+    episode_bundles: bool = False
+    enabled_sensors: tuple[str, ...] = ()
+    extra_versions: dict[str, str] = field(default_factory=dict)
 
 
 def json_default(o: Any) -> Any:
@@ -139,7 +151,8 @@ def _write(base: Path, files: Mapping[str, Any]) -> dict[str, str]:
     return hashes
 
 
-def write_package(a: Assembled, out_dir: Path) -> PackageResult:
+def write_package(a: Assembled, out_dir: Path, options: PackageOptions | None = None) -> PackageResult:
+    options = options or PackageOptions()
     root = out_dir / f"scenario-{a.scenario_id}"
     if root.exists():
         raise FileExistsError(f"{root} exists; packages are immutable (delete it to rebuild)")
@@ -164,7 +177,7 @@ def write_package(a: Assembled, out_dir: Path) -> PackageResult:
             )
             for e in a.spec.episodes
         ],
-        enabled_sensors=[],
+        enabled_sensors=list(options.enabled_sensors),
         available_artifacts=sorted(a.visible),
         record_counts={k: n for k, v in sorted(a.visible.items()) if (n := record_count(k, v)) is not None},
         tool_versions=a.meta["tool_versions"],
@@ -183,8 +196,12 @@ def write_package(a: Assembled, out_dir: Path) -> PackageResult:
         "package_id": pkg,
         "scenario_id": a.scenario_id,
         "group_id": a.seeds.group_id(),
-        "data_tier": "context",
-        "contents": {"posture": a.meta["posture"], "telemetry": False, "episode_bundles": False},
+        "data_tier": options.data_tier,
+        "contents": {
+            "posture": a.meta["posture"],
+            "telemetry": options.telemetry,
+            "episode_bundles": options.episode_bundles,
+        },
         "generator": {
             "iris": __version__,
             "generator_major": GENERATOR_MAJOR,
@@ -198,6 +215,7 @@ def write_package(a: Assembled, out_dir: Path) -> PackageResult:
             "posture": POSTURE_VERSION,
             "d6_key": D6_KEY_VERSION,
             "soc": SOC_VERSION,
+            **options.extra_versions,
         },
         "seeds": a.seeds.to_dict(),
         "lineage": {"parent": None, "overridden_subseeds": sorted(a.seeds.overridden)},
