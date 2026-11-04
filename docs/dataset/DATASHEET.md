@@ -1,14 +1,13 @@
 # IRIS dataset — Datasheet (context / GRC tier, D6)
 
-*Reconstructed and verified against the real IRIS source on 2026-11-04. Every field below was
-read from actual generated packages, not from documentation.*
+*Checked against the IRIS source and generated packages (November 2026).*
 
 ## 1. What this dataset is
 
 IRIS is a synthetic SOC/GRC cyber-range and dataset generator. This datasheet covers its
 **context tier**: per-scenario packages that carry a full, recorded **GRC program** (asset
 inventory, control register, risk register, business context, policy exceptions, SOC inventory,
-SBOM/posture) with **deliberately planted flaws** hidden from the model. The learning task on
+and SBOM/posture when built with `--posture`) with **deliberately planted flaws** hidden from the model. The learning task on
 this tier is **D6 — GRC flaw finding**: given only what an organization *records* about itself,
 find the records whose stated state hides a real gap.
 
@@ -107,27 +106,32 @@ These are stable per seed. A 1,000-scenario build gives the same proportions at 
 ```
 
 - **clean**: episode has no planted flaw (a hard negative — the model must NOT invent one).
-- **flaws[]**: each planted flaw; the model is scored on finding its `key` with the right
-  `flaw type` (`module`) and citing supporting `evidence_refs`.
+- **flaws[]**: each planted flaw; the model is scored on naming its `key` (`recall`) and on
+  giving the right flaw type (`module`; `type_accuracy`, `strict_recall`). `evidence_refs`
+  describe where the evidence lives; citations are not scored yet.
 - **aliases**: acceptable ways to name the same subject (id, IP, hostname) — scoring is not fooled
   by which alias the model uses.
-- **tolerated_keys**: records that look suspicious but are acceptable — naming them is not
-  penalised, so the dataset tolerates reasonable judgement calls.
+- **tolerated_keys**: records changed only by bounded, realistic noise (an off-by-one
+  criticality, a missing owner, a unit spelling variant). A claim on one is a *noise claim*:
+  not a false positive and not in precision, but a confident one still costs Brier score.
 
 ### Detectability classes (why this dataset matters)
-- **DC1** directly detectable from one visible record.
-- **DC2** needs **posture + telemetry evidence joined** — the hard class; this is the learned
-  model's job.
-- **DC3** detectable by cross-referencing the bitemporal history (e.g. a change recorded but a
-  dependent value never updated).
-- **DC4** no visible evidence by design (not scored as findable; guards against over-claiming).
+- **DC1** internal inconsistency inside the visible plane (e.g. a risk owner who is not in
+  `identities.json`, regulated data recorded at the lowest criticality).
+- **DC2** needs **posture or telemetry evidence**; context packages do not carry it, so DC2
+  is near-unfindable on this tier by construction. Score DC2 on the train/gold tiers.
+- **DC3** time: dates against the review cadence or an expiry (expired exception still in use,
+  overdue review, a business change never followed by a re-assessment in the history).
+- **DC4** no visible evidence by design: excluded from recall; a confident claim (>= 0.5) is
+  counted as *unsupported*, which tests that a model abstains instead of over-claiming.
 
 ## 6. The task and the baseline to beat
 
 **Task D6.** Input: the `visible/` plane of an episode. Output: a list of `DecisionRecord`s, each
 naming a flawed record (`collection` + `key`), the flaw type, a confidence, and references. The
-evaluator (`iris eval d6`) reports recall by detectability class, precision, type accuracy, false
-alarms on clean episodes, and Brier score.
+evaluator (`iris eval d6`) reports recall over DC1-DC3 and per class, `strict_recall` (right
+record and right type), precision, type accuracy, harm-weighted recall, false alarms on clean
+episodes, unsupported DC4 claims, decisions for unknown episodes (`unscored`) and Brier score.
 
 **Rule baseline** (`iris baseline d6`, reads visible only) on a 500-scenario batch scored roughly:
 DC1 ≈ 0.99, DC3 ≈ 1.0, **DC2 ≈ 0.07**, precision ≈ 0.89. The simple checks clear DC1/DC3 but
@@ -139,9 +143,10 @@ number to track.
 - **Build:** `iris package batch --count N --out <dir>`
 - **Verify:** `iris package verify <pkg>` — hashes, Merkle root, and the **no-peek audit** (proves
   no hidden identifier leaked into `visible/`).
-- **Coverage (this tier):** `iris dataset coverage-context <dir>` *(added in this finalization —
-  the stock `dataset coverage` reads composed train-tier packages and reports 0 on context data).*
-- **Score a model:** `iris eval d6 <pkg> <decisions.jsonl>`
+- **Coverage (this tier):** `iris dataset coverage-context <dir>` (`dataset coverage` is for
+  composed train-tier packages and reports 0 on context data).
+- **Score a model:** `iris eval d6 <pkg> --decisions <decisions.jsonl>`
+  (`iris eval all` adds D1/D2/D4 on composed or live packages).
 
 ## 8. Splits (how to train/validate honestly)
 
@@ -154,17 +159,19 @@ hold out ~10–20% of groups for validation and keep at least one GRC-style valu
 ## 9. Determinism and provenance
 
 Same seed → same spec and same recorded registers (`"determinism": "recipe and spec exact"`).
+With `SOURCE_DATE_EPOCH` set, whole packages (hidden manifest included) are byte-identical.
 Each package carries its seeds and spec in `hidden/recipe/`, and `grc_diff_audit.json` proves the
 visible registers equal *reality + org style + bounded noise + ledgered flaws* — so every single
 difference between truth and record is explained.
 
 ## 10. Honest limits
 
-- **In scope now:** GRC registers, SOC configuration/inventory, SBOM + date-gated CVEs, and the
-  **D6** task. Docker-free, finished, reproducible.
+- **In scope now:** GRC registers, SOC configuration/inventory, SBOM + date-gated CVEs (with
+  `--posture`), and the **D6** task. Docker-free and reproducible.
 - **Not in this tier:** live attack **telemetry** (Wazuh/Suricata alerts from real attacks) and the
   decisions that depend on it — **D1** classification, **D2** priority, **D4** control
-  recommendation. Those require the live Docker range to be built and proven on a Docker host, and
-  ship separately as the *train* (composed) and *gold* (live) tiers.
+  recommendation. Their keys and evaluator (`iris eval d1|d2|d4|all`) exist; the data requires
+  the live Docker range to be built and proven on a Docker host, and ships separately as the
+  *train* (composed) and *gold* (live) tiers.
 - **DC4** flaws are intentionally not findable from the visible plane; they exist to test that a
   model abstains rather than hallucinating evidence.
