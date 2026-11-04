@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -463,7 +464,7 @@ def posture_scan(master: tuple[int, ...], images: tuple[str, ...], force: bool) 
     for img in sorted(wanted):
         try:
             path = scan_image(img, db, force=force)
-            summary = json.loads(path.read_text())["summary"]
+            summary = json.loads(path.read_text(encoding="utf-8"))["summary"]
             click.echo(f"ok    {img}: {summary['packages']} packages, {summary['cves']} CVEs")
         except Exception as exc:  # report every image, then fail at the end
             failed += 1
@@ -665,20 +666,94 @@ def eval_() -> None:
     """Score Engine decisions against a package's hidden reference key."""
 
 
+def _load_decisions(path: Path, root: Path) -> list[Any]:
+    """Parse a decisions.jsonl file. A malformed line is reported with its line number
+    (instead of a traceback); duplicate decision IDs and decisions for another scenario
+    are reported as warnings so a mixed-up file is noticed before its score is trusted."""
+    from iris.contracts.decisions import DecisionRecord
+
+    recs: list[Any] = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            recs.append(DecisionRecord.model_validate_json(line))
+        except ValidationError as exc:
+            first = str(exc).splitlines()
+            raise click.ClickException(f"{path}:{n}: invalid decision record: {' '.join(first[:3])}") from exc
+    dupes = sorted(k for k, v in Counter(r.decision_id for r in recs).items() if v > 1)
+    if dupes:
+        click.secho(f"warning: {len(dupes)} duplicate decision_id(s), e.g. {dupes[0]}", fg="yellow", err=True)
+    manifest = root / "visible" / "manifest.visible.json"
+    if manifest.exists():
+        scn = json.loads(manifest.read_text(encoding="utf-8")).get("scenario_id")
+        other = sum(1 for r in recs if r.scenario_id != scn)
+        if other:
+            click.secho(
+                f"warning: {other} decision(s) are for a scenario other than {scn}", fg="yellow", err=True
+            )
+    return recs
+
+
+_ROOT_ARG = click.argument("root", type=click.Path(exists=True, file_okay=False, path_type=Path))
+_DECISIONS_OPT = click.option(
+    "--decisions", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True
+)
+
+
 @eval_.command("d6")
-@click.argument("root", type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option("--decisions", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@_ROOT_ARG
+@_DECISIONS_OPT
 def eval_d6(root: Path, decisions: Path) -> None:
     """D6 recall by detectability class, precision, type accuracy, false alarms, Brier."""
-    from iris.contracts.decisions import DecisionRecord
     from iris.evaluator.d6 import score_package
 
-    recs = [
-        DecisionRecord.model_validate_json(line)
-        for line in decisions.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    click.echo(json.dumps(score_package(root, recs).summary(), indent=2))
+    click.echo(json.dumps(score_package(root, _load_decisions(decisions, root)).summary(), indent=2))
+
+
+def _eval_types(root: Path, decisions: Path, types: tuple[str, ...]) -> None:
+    from iris.evaluator.decisions import score_decisions
+
+    summary = score_decisions(root, _load_decisions(decisions, root)).summary(types)
+    click.echo(json.dumps(summary if len(types) > 1 else summary[types[0]], indent=2))
+
+
+@eval_.command("d1")
+@_ROOT_ARG
+@_DECISIONS_OPT
+def eval_d1(root: Path, decisions: Path) -> None:
+    """D1 classification: accuracy, attack recall, benign FPR, macro-F1, harmful, Brier."""
+    _eval_types(root, decisions, ("D1",))
+
+
+@eval_.command("d2")
+@_ROOT_ARG
+@_DECISIONS_OPT
+def eval_d2(root: Path, decisions: Path) -> None:
+    """D2 priority: exact and within-one accuracy, under/over-prioritised, harmful."""
+    _eval_types(root, decisions, ("D2",))
+
+
+@eval_.command("d4")
+@_ROOT_ARG
+@_DECISIONS_OPT
+def eval_d4(root: Path, decisions: Path) -> None:
+    """D4 control recommendation: control recall/precision, action accuracy, hit@1, harmful."""
+    _eval_types(root, decisions, ("D4",))
+
+
+@eval_.command("all")
+@_ROOT_ARG
+@_DECISIONS_OPT
+def eval_all(root: Path, decisions: Path) -> None:
+    """Every scored type (D1, D2, D4, D6) in one report."""
+    from iris.evaluator.d6 import score_package
+    from iris.evaluator.decisions import score_decisions
+
+    recs = _load_decisions(decisions, root)
+    out = score_decisions(root, recs).summary()
+    out["D6"] = score_package(root, recs).summary()
+    click.echo(json.dumps(out, indent=2))
 
 
 # ---------------------------------------------------------------- live range (P2)
@@ -1283,15 +1358,19 @@ def dataset_coverage(root: Path) -> None:
         ek = pkg / "hidden" / "evaluation_key"
         if not ek.exists():
             continue
-        full = json.loads((pkg / "hidden" / "manifest.json").read_text())
+        full = json.loads((pkg / "hidden" / "manifest.json").read_text(encoding="utf-8"))
         tier = full.get("data_tier", "train")
         for d1_path in sorted((ek / "d1").glob("*.json")):
             eid = d1_path.stem
-            d1 = json.loads(d1_path.read_text())
-            d2 = json.loads((ek / "d2" / f"{eid}.json").read_text())
-            d4 = json.loads((ek / "d4" / f"{eid}.json").read_text())
+            d1 = json.loads(d1_path.read_text(encoding="utf-8"))
+            d2 = json.loads((ek / "d2" / f"{eid}.json").read_text(encoding="utf-8"))
+            d4 = json.loads((ek / "d4" / f"{eid}.json").read_text(encoding="utf-8"))
             d6_path = ek / "d6" / f"{eid}.json"
-            d6n = len(json.loads(d6_path.read_text()).get("flaws", [])) if d6_path.exists() else 0
+            d6n = (
+                len(json.loads(d6_path.read_text(encoding="utf-8")).get("flaws", []))
+                if d6_path.exists()
+                else 0
+            )
             items.append(from_keys(d1, d2, d4, tier, d6n))
     click.echo(json.dumps(coverage_report(items).to_dict(), indent=2))
 
@@ -1314,7 +1393,7 @@ def dataset_coverage_context(root: Path) -> None:
             continue
         packages += 1
         for kp in sorted(d6_dir.glob("*.json")):
-            keys.append(json.loads(kp.read_text()))
+            keys.append(json.loads(kp.read_text(encoding="utf-8")))
     if packages == 0:
         raise click.ClickException(
             f"no context packages with D6 keys under {root}; "
