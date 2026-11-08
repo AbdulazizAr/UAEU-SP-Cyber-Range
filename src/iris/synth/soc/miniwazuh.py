@@ -381,10 +381,7 @@ class MiniWazuh:
             return False
         if rule.regex is not None and not rule.regex.search(msg):
             return False
-        for name, rx in rule.fields:
-            if not rx.search(data.get(name, "")):
-                return False
-        return True
+        return all(rx.search(data.get(name, "")) for name, rx in rule.fields)
 
     def _walk(
         self, rule: Rule, msg: str, data: dict[str, str], decoded_as: str | None, prog: str | None

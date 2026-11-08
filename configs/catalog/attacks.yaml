@@ -1,0 +1,131 @@
+# Attack template catalog (builder brief file 05 §2). Families F1-F9 use the BRIEF numbering
+# (decisions.md): F1 credential, F2 web, F3 access/privilege, F4 recon, F5 lateral,
+# F6 exfil, F7 persistence, F8 insider, F9 C2.
+#
+# Each template declares its ATT&CK technique (validated against the pinned v20.0 STIX at load,
+# build fails otherwise), preconditions (weakness module / applicable roles), the footprint
+# executor that renders its telemetry, and the behaviour-class detection expected. Templates
+# carry no exploit code or payloads — only the evidence a step leaves. review_status is
+# unreviewed until a human promotes the ATT&CK mapping and expected detections (brief file 05 §6).
+catalog_version: "0.1.0"
+
+families:
+  F1: {name: Credential access, tactic: credential-access}
+  F2: {name: Web exploitation, tactic: initial-access}
+  F3: {name: Access and privilege abuse, tactic: privilege-escalation}
+  F4: {name: Reconnaissance, tactic: discovery}
+  F5: {name: Lateral movement, tactic: lateral-movement}
+  F6: {name: Collection and exfiltration, tactic: exfiltration}
+  F7: {name: Persistence and evasion, tactic: persistence}
+  F8: {name: Insider misuse, tactic: collection}
+  F9: {name: Command and control, tactic: command-and-control}
+
+templates:
+  F1_ssh_bruteforce:
+    family: F1
+    technique: T1110.001
+    executor: ssh_bruteforce
+    weakness: auth.ssh_password
+    target_roles: [web_server, app_server, database, bastion, directory, file_server, backup_server, dns_server, mail_server]
+    expected_rules: [5760, 5763]
+    expected_detection: auth_failure_burst_same_source
+  F1_ssh_spray:
+    family: F1
+    technique: T1110.003
+    executor: ssh_spray
+    weakness: auth.ssh_password
+    target_roles: [bastion, directory, app_server]
+    expected_rules: [5760]
+    expected_detection: auth_failure_many_users_low_rate
+  F2_web_sqli:
+    family: F2
+    technique: T1190
+    executor: web_exploit
+    weakness: web.sqli_login
+    target_roles: [app_server, web_server]
+    expected_detection: web_injection_pattern
+  F2_web_traversal:
+    family: F2
+    technique: T1190
+    executor: web_exploit
+    weakness: web.path_traversal
+    target_roles: [app_server, web_server]
+    expected_detection: web_traversal_pattern
+  F3_sudo_abuse:
+    family: F3
+    technique: T1548
+    executor: privilege_abuse
+    weakness: host.sudo_nopasswd
+    target_roles: [app_server, database, web_server, bastion]
+    expected_rules: [5402]
+    expected_detection: sudo_to_root_unusual
+  F3_idor:
+    family: F3
+    technique: T1213
+    executor: idor_harvest
+    weakness: web.idor_object
+    target_roles: [app_server]
+    expected_detection: sequential_object_access
+  F4_portscan:
+    family: F4
+    technique: T1046
+    executor: recon_scan
+    target_roles: [web_server, app_server, database, directory]
+    expected_detection: many_ports_scan_flow_only
+  F4_host_discovery:
+    family: F4
+    technique: T1018
+    executor: recon_scan
+    target_roles: [app_server, database, file_server]
+    expected_detection: internal_host_sweep
+  F5_ssh_pivot:
+    family: F5
+    technique: T1021.004
+    executor: lateral_ssh
+    weakness: auth.shared_ssh_key
+    target_roles: [database, file_server, directory, backup_server]
+    expected_rules: [5715]
+    expected_detection: ssh_from_unusual_internal_host
+  F6_exfil_transfer:
+    family: F6
+    technique: T1048
+    executor: exfiltration
+    target_roles: [database, file_server, app_server]
+    expected_detection: large_outbound_transfer
+  F6_archive_stage:
+    family: F6
+    technique: T1041
+    executor: exfiltration
+    target_roles: [file_server, database]
+    expected_detection: archive_then_transfer
+  F7_authorized_keys:
+    family: F7
+    technique: T1098
+    executor: persistence
+    target_roles: [app_server, web_server, database, bastion]
+    expected_rules: [550, 554]
+    expected_detection: authorized_keys_modified
+  F7_cron_persistence:
+    family: F7
+    technique: T1053
+    executor: persistence
+    target_roles: [app_server, database, file_server]
+    expected_detection: new_cron_entry
+  F7_agent_disable:
+    family: F7
+    technique: T1070
+    executor: agent_disable
+    target_roles: [app_server, web_server, database]
+    expected_detection: agent_went_dark
+  F8_insider_bulk:
+    family: F8
+    technique: T1039
+    executor: insider_misuse
+    target_roles: [file_server, database]
+    expected_detection: off_hours_bulk_access_valid_creds
+  F9_c2_beacon:
+    family: F9
+    technique: T1071.001
+    executor: c2_beacon
+    target_roles: [app_server, web_server, workstation]
+    expected_detection: periodic_beacon_jittered
