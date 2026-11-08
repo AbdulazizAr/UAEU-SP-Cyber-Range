@@ -37,15 +37,20 @@ FORBIDDEN_IMPORTS: dict[str, tuple[str, ...]] = {
         "iris.oracle",
         "iris.evaluator",
         "iris.packager",
+        "iris.synth",
         "iris.references.intel",
     ),
-    "iris.oracle": ("iris.engine", "iris.evaluator"),
+    "iris.oracle": ("iris.engine", "iris.evaluator", "iris.synth"),
     "iris.evaluator": (
         "iris.generator",
         "iris.engine",
         "iris.packager",
         "iris.live",
+        "iris.synth",
     ),  # scores key files, not objects
+    # The synthetic path is generator-side: it may import core, contracts, generator,
+    # references, oracle and packager, but never the Engine or the evaluator (brief §5.2).
+    "iris.synth": ("iris.engine", "iris.evaluator"),
     "iris.packager": ("iris.engine", "iris.evaluator"),
     "iris.contracts": ("iris.generator", "iris.oracle", "iris.engine", "iris.evaluator", "iris.references"),
     "iris.core": (

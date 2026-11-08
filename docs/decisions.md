@@ -222,3 +222,84 @@ Final decisions made after the INPUT parts were written. Where an INPUT part (in
 - Code: `~/work/iris`. Data: `/srv/iris` via `IRIS_DATA`. Same layout on lab machines.
 - Laptop (i7-1355U, 14.8 GiB): development, golden sample, one live lane. Lab machines (32 GB): three lanes each, fragment factory and live Gold sets.
 - Live episode profile: about 14.5 min (2.5 warm pre-roll, 10 observed, 1.5 drain, 0.5 snapshot).
+
+---
+
+# Synthetic generation (synth-*) — supersedes the live-range architecture
+
+Builder brief `iris_builder_briefing` (files 00–09). Where an earlier decision above
+disagrees with this section, **this section wins** for everything under `src/iris/synth/`.
+Earlier sections still govern the frozen live/compose path.
+
+## Architecture shift (brief README §3.1)
+
+- **"Record-and-compose with a live range" is replaced by "synthesize-from-world-simulation".**
+  A scenario's telemetry is produced by deterministic Python from one simulated `World`
+  (`iris.synth`), not captured from Docker + real Wazuh + real Suricata.
+- The live path (`src/iris/live/`, `spikes/`, `images/`, `compose/`, `fragments/`) is
+  **frozen, not deleted**: it keeps compiling and its tests keep passing, and nothing new
+  depends on it. If a live "Gold" run ever succeeds later it returns as a stricter tier
+  without changing the contract.
+- New package `src/iris/synth/` is generator-side: it may import `core`, `contracts`,
+  `generator`, `references`. The import boundaries are extended so `engine` never imports
+  `synth`, and `synth` never imports `engine`, `oracle` or `evaluator`.
+
+## Data tier
+
+- There is no live Gold in this path. New tier **`SYN`** (synthetic). Validation and test
+  sets are held-out SYN groups. Every dataset doc and report carries the banner
+  `SYNTHETIC-ONLY EVIDENCE` and the word "synthetic" in its first paragraph.
+
+## Contract v2.1 = v2.0 + noise additions (brief §4; additive, minor)
+
+- `schema_version` bumps to **`2.1.0`**. Every v2.0 visible file name and field is kept.
+- Hidden additions only: `truth/noise_truth.json`, `quality/noise_report.json`, a
+  `noise_profile {profile_id, level, seed, version}` block in the **hidden** manifest, and
+  `noise_profile_id`, `actual_drop_rate`, `actual_duplicate_rate`,
+  `delay_distribution_summary`, `shortcut_test {...}` in hidden `quality/data_quality.json`.
+- The visible plane never carries the noise profile, seeds or any noise setting (no-peek).
+
+## Attack-family numbering (conflict resolved)
+
+- The frozen live code (`iris.live.attacks`) numbers families F1=web, F2=credential,
+  F4=lateral, F5=exfil. The design docs and the brief (file 05) number them
+  **F1 credential, F2 web, F3 access/privilege, F4 recon, F5 lateral, F6 exfil,
+  F7 persistence, F8 insider, F9 C2**. The synth path uses the **brief's numbering**
+  (`iris.synth.activity`); the live `FAMILIES` map is left untouched so its tests still pass.
+  Oracle/evaluator code shared by both reads the family *metadata* object, never a bare
+  number, so the two numbering schemes never collide.
+
+## Attack realism boundary (safety)
+
+- Synthetic attacks are generated as the **evidence they leave** — log lines, flow
+  metadata (sizes, timing, ports), Wazuh rule hits, FIM/auditd records — never as runnable
+  exploit code, payloads or working credentials. A template declares its ATT&CK mapping,
+  preconditions and per-sensor footprint; executors emit telemetry from that footprint.
+  This is all the detection/GRC model needs and keeps no usable attack tooling in the repo.
+
+## Vulnerability snapshot (brief file 03, DECIDE-AND-RECORD → option B)
+
+- **Option B (offline CVE seed catalog).** Network is unavailable at generation time, so we
+  pin a compact catalog of real, well-known CVEs relevant to the software catalog
+  (`configs/catalog/cve_seed.yaml`), each with CVE ID, affected package + fixed version,
+  CVSS vector/score, CWE, published/modified dates, KEV flag + date, EPSS where dated, and a
+  `source`. Unverifiable entries are `needs_human_review: true` and excluded from default
+  sampling. No CVE ID, score, date or fixed version is ever invented; if no data exists for
+  a (package, version) the generator emits **no finding** rather than a made-up one.
+- Date-gating is a hard rule: at virtual time T only CVEs/KEV/EPSS dated ≤ T are visible.
+
+## References pinned now (brief file 01/04, Phase 1)
+
+- Wazuh **4.14.9** rules + decoders (git tag `v4.14.9`), Suricata **8.0.6** built-in rules
+  (git tag `suricata-8.0.6`), ATT&CK Enterprise **v20.0** STIX. Each is pinned by SHA-256 in
+  `configs/references/lock.json`. The full Emerging Threats Open ruleset is not machine-
+  fetchable here; Suricata alerts therefore come from Suricata's own event rules plus our
+  behaviour rules, and no ET SID is invented. Recorded as a documented limitation.
+
+## MiniWazuh fidelity
+
+- MiniWazuh (`iris.synth.soc.miniwazuh`) is a faithful **reimplementation** of the Wazuh
+  analysis subset we need (predecoder, decoders, rule eval incl. frequency/same-field). Its
+  fidelity is **unverified** until a one-time `wazuh-logtest` calibration runs on a Docker
+  machine (`tools/calibrate_wazuh.sh`, not in CI). Dataset docs state this honestly. Any rule
+  construct it cannot evaluate fails loudly in a test and is listed in `UNSUPPORTED_RULES.md`.
