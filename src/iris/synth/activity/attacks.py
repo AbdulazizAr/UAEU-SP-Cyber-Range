@@ -113,7 +113,8 @@ def _spread(ctx: AttackContext, n: int, rng: random.Random) -> list[datetime]:
     else:
         step = span / (n + 1)
         points = [step * (i + 1) + rng.uniform(-step / 4, step / 4) for i in range(n)]
-    return [ctx.start + timedelta(seconds=max(0.0, p)) for p in points]
+    # distinct timestamps (microsecond offset by index) so every footprint has a unique event id
+    return [ctx.start + timedelta(seconds=max(0.0, p), microseconds=i) for i, p in enumerate(points)]
 
 
 def _log(ctx: AttackContext, ts: datetime, program: str, line: str) -> Footprint:

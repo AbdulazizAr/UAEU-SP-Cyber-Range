@@ -21,7 +21,9 @@ from iris.synth.world import World
 
 def _times(start: datetime, end: datetime, n: int, rng: random.Random) -> list[datetime]:
     span = max(1.0, (end - start).total_seconds())
-    return sorted(start + timedelta(seconds=rng.uniform(0, span)) for _ in range(n))
+    offs = sorted(rng.uniform(0, span) for _ in range(n))
+    # distinct timestamps (microsecond offset by index) so every footprint gets a unique event id
+    return [start + timedelta(seconds=o, microseconds=i) for i, o in enumerate(offs)]
 
 
 def web_browsing(
