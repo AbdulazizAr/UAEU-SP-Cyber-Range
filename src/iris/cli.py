@@ -187,14 +187,20 @@ def refs_fetch(ids: tuple[str, ...], repin: bool) -> None:
 
 @refs.command("verify")
 def refs_verify() -> None:
-    """Re-hash every reference against the lock."""
+    """Re-hash every reference (single files and the committed synth bundles) against the lock."""
     from iris.references.registry import load_lock, load_registry, verify
+    from iris.synth.refs import verify_bundles
 
     results = verify(load_registry(), load_lock())
     for r in results:
         colour = {"ok": "green", "mismatch": "red"}.get(r.status, "yellow")
         click.secho(f"{r.status:9} {r.id} {r.detail}", fg=colour)
-    sys.exit(1 if any(r.status == "mismatch" for r in results) else 0)
+    bundles = verify_bundles()
+    for b in bundles:
+        colour = {"ok": "green", "mismatch": "red"}.get(b.status, "yellow")
+        click.secho(f"{b.status:9} {b.bundle_id} (bundle) {b.detail}", fg=colour)
+    bad = any(r.status == "mismatch" for r in results) or any(b.status == "mismatch" for b in bundles)
+    sys.exit(1 if bad else 0)
 
 
 @refs.command("show")

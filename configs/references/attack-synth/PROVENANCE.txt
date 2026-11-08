@@ -1,0 +1,5 @@
+MITRE ATT&CK Enterprise v20.0 STIX 2.1, filtered to platforms ['Containers', 'Linux', 'Network', 'Network Devices', 'PRE'].
+Derived from mitre-attack/attack-stix-data enterprise-attack-20.0.json
+source sha256: 2339a3c36353d5ee2c07e98af3fafbf00761e0e3979ede06402657445b7b4278
+Kept: x-mitre-collection, 15 tactics, 486 non-revoked in-scope techniques.
+attack-pattern objects slimmed to the fields the parser reads. CC-BY 4.0 (MITRE).
