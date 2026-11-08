@@ -35,6 +35,7 @@ packages = ["src/iris"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = ["slow: slower QA tests (batch builds, shortcut gate)"]
 
 [tool.ruff]
 line-length = 110
@@ -57,5 +58,5 @@ mypy_path = "src"
 packages = ["iris"]
 
 [[tool.mypy.overrides]]
-module = ["yaml"]
+module = ["yaml", "sklearn.*"]
 ignore_missing_imports = true

@@ -48,11 +48,13 @@ class PackageOptions:
     """Tier and contents flags for the package manifests. The default is a v0 *context*
     package (no telemetry); the composer and the live recorder override these."""
 
-    data_tier: str = "context"  # context | train | gold
+    data_tier: str = "context"  # context | train | gold | SYN
     telemetry: bool = False
     episode_bundles: bool = False
     enabled_sensors: tuple[str, ...] = ()
     extra_versions: dict[str, str] = field(default_factory=dict)
+    schema_version: str = "2.0.0"  # synth packages set "2.1.0"
+    extra_hidden_manifest: dict[str, Any] = field(default_factory=dict)  # e.g. noise_profile (hidden only)
 
 
 def json_default(o: Any) -> Any:
@@ -163,6 +165,7 @@ def write_package(a: Assembled, out_dir: Path, options: PackageOptions | None = 
     tz = a.spec.organization.timezone
     start = datetime.combine(cal.start, time(0), tzinfo=a.spec.episodes[0].virtual_start.tzinfo)
     manifest = VisibleManifest(
+        schema_version=options.schema_version,
         package_id=pkg,
         scenario_id=a.scenario_id,
         organization_id=a.spec.organization.organization_id,
@@ -230,5 +233,7 @@ def write_package(a: Assembled, out_dir: Path, options: PackageOptions | None = 
         "hidden_hashes": {k: f"sha256:{v}" for k, v in hid_hashes.items()},
         "hidden_merkle_root": merkle_root(hid_hashes.items()),
     }
+    for k, v in options.extra_hidden_manifest.items():
+        full.setdefault(k, v)  # additive only; never overwrite a core manifest field
     (root / "hidden" / HIDDEN_MANIFEST).write_bytes(encode(HIDDEN_MANIFEST, full))
     return PackageResult(root, a.scenario_id, pkg, vroot, len(vis_hashes) + 1, len(hid_hashes) + 1)
