@@ -1,0 +1,134 @@
+# Offline CVE seed catalog (builder brief file 03 §3, option B).
+#
+# A COMPACT set of real, well-known CVEs for the software catalog. The generator reads ONLY
+# this pinned snapshot; it never calls NVD/KEV/EPSS and never invents a CVE ID, score, date
+# or fixed version. Where a field could not be stated with confidence it is omitted (CVSS is
+# optional; the model tolerates its absence) rather than guessed.
+#
+# Honesty (brief file 03 §3, DATASHEET): this is a hand-curated seed, not a full NVD mirror.
+# `review_status: unreviewed` entries are DRAFTS — included in generation but every finding
+# records source + review_status so a human (or a real pinned NVD/Trivy snapshot, option A)
+# can confirm them before any result is called "validated". `needs_human_review: true`
+# entries are excluded from default generation.
+#
+# date-gating: at virtual time T a finding/enrichment shows a CVE only if published_at <= T,
+# a KEV flag only if kev.date_added <= T, EPSS only if a dated value <= T exists.
+catalog_version: "0.1.0"
+source_note: "Fields recalled from public NVD/CISA-KEV records; verify against option-A snapshot before release."
+
+cves:
+  - cve_id: CVE-2024-6387
+    package: openssh-server
+    affected_below: "9.8p1"        # OpenSSH 8.5p1..9.7 ("regreSSHion" signal-handler race)
+    fixed_version: "9.8p1"
+    cwe: CWE-364
+    cvss: 8.1
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2024-07-01
+    kev: {listed: false}
+    source: NVD
+    review_status: unreviewed
+
+  - cve_id: CVE-2023-38408
+    package: openssh-server
+    affected_below: "9.3p2"        # ssh-agent PKCS#11 forwarded-agent RCE
+    fixed_version: "9.3p2"
+    cwe: CWE-426
+    cvss: 9.8
+    cvss_version: "3.1"
+    severity: CRITICAL
+    published_at: 2023-07-20
+    kev: {listed: false}
+    source: NVD
+    review_status: unreviewed
+
+  - cve_id: CVE-2021-3156
+    package: sudo
+    affected_below: "1.9.5p2"      # "Baron Samedit" heap overflow
+    fixed_version: "1.9.5p2"
+    cwe: CWE-193
+    cvss: 7.8
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2021-01-26
+    kev: {listed: true, date_added: 2022-03-25}
+    source: NVD+KEV
+    review_status: unreviewed
+
+  - cve_id: CVE-2023-22809
+    package: sudo
+    affected_below: "1.9.12p2"     # sudoedit arbitrary file write via EDITOR
+    fixed_version: "1.9.12p2"
+    cwe: CWE-269
+    cvss: 7.8
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2023-01-18
+    kev: {listed: false}
+    source: NVD
+    review_status: unreviewed
+
+  - cve_id: CVE-2023-4911
+    package: libc6
+    affected_below: "2.38"         # "Looney Tunables" GLIBC_TUNABLES local priv-esc
+    fixed_version: "2.38-1"
+    cwe: CWE-787
+    cvss: 7.8
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2023-10-03
+    kev: {listed: true, date_added: 2023-11-21}
+    source: NVD+KEV
+    review_status: unreviewed
+
+  - cve_id: CVE-2022-0778
+    package: openssl
+    affected_below: "3.0.2"        # BN_mod_sqrt infinite loop (DoS) via crafted certificate
+    fixed_version: "3.0.2"
+    cwe: CWE-835
+    cvss: 7.5
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2022-03-15
+    kev: {listed: false}
+    source: NVD
+    review_status: unreviewed
+
+  - cve_id: CVE-2021-23017
+    package: nginx
+    affected_below: "1.21.0"       # DNS resolver off-by-one
+    fixed_version: "1.21.0"
+    cwe: CWE-193
+    cvss: 7.7
+    cvss_version: "3.1"
+    severity: HIGH
+    published_at: 2021-05-25
+    kev: {listed: false}
+    source: NVD
+    review_status: unreviewed
+
+  # ---- entries whose exact fixed version / score could not be stated with confidence:
+  #      excluded from default generation until a human or option-A snapshot confirms them.
+  - cve_id: CVE-2023-5869
+    package: postgresql
+    affected_below: "16.1"
+    fixed_version: "16.1"
+    cwe: CWE-190
+    severity: HIGH
+    published_at: 2023-11-09
+    source: NVD
+    review_status: unreviewed
+    needs_human_review: true
+
+  - cve_id: CVE-2021-44142
+    package: samba
+    affected_below: "4.13.17"
+    fixed_version: "4.13.17"
+    cwe: CWE-787
+    severity: HIGH
+    published_at: 2022-02-21
+    kev: {listed: true, date_added: 2022-03-03}
+    source: NVD+KEV
+    review_status: unreviewed
+    needs_human_review: true
