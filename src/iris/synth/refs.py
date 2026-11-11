@@ -13,16 +13,23 @@ committed under ``configs/references/<id>/`` and pinned as **bundle digests** in
 A bundle digest is ``sha256`` over the sorted manifest ``"<relpath>\\0<file sha256>"`` of
 every file in the directory, so any edit, addition or removal changes it. ``verify_bundles``
 re-computes and compares; ``iris refs verify`` and ``iris synth refs verify`` call it.
+
+The digest is OS-independent: files are ordered by their POSIX relative path (not OS Path
+sort order), and each file's bytes are line-ending-normalised (CRLF/CR -> LF) before hashing.
+These are text rule/standard files, and line endings are not meaningful content; normalising
+means a Windows checkout (which Git may convert to CRLF) and a Linux checkout produce the same
+digest, so ``iris refs verify`` passes on every platform.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from iris.core.hashing import sha256_file, sha256_hex
+from iris.core.hashing import sha256_hex
 from iris.references.attack import AttackCatalog
 from iris.references.attack import load as load_attack
 from iris.references.registry import default_lock_path
@@ -42,13 +49,25 @@ def bundle_root(bundle_id: str) -> Path:
     return references_root() / bundle_id
 
 
+def _normalized_file_sha256(path: Path) -> str:
+    """SHA-256 of a file's bytes with line endings normalised to LF (OS-independent)."""
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
 def bundle_digest(directory: Path) -> tuple[str, int, int]:
-    """Return ``(sha256, file_count, total_bytes)`` over a directory's sorted manifest."""
-    files = sorted(p for p in directory.rglob("*") if p.is_file())
+    """Return ``(sha256, file_count, total_bytes)`` over a directory's sorted manifest.
+
+    Ordered by POSIX relative path and hashed with line endings normalised, so the digest is
+    identical on Linux, macOS and Windows regardless of Git's checkout line-ending handling."""
+    files = sorted(
+        (p for p in directory.rglob("*") if p.is_file()),
+        key=lambda p: p.relative_to(directory).as_posix(),
+    )
     lines, total = [], 0
     for p in files:
         total += p.stat().st_size
-        lines.append(f"{p.relative_to(directory).as_posix()}\0{sha256_file(p)}")
+        lines.append(f"{p.relative_to(directory).as_posix()}\0{_normalized_file_sha256(p)}")
     return sha256_hex("\n".join(lines)), len(files), total
 
 
