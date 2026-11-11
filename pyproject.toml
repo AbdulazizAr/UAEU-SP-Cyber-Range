@@ -10,6 +10,9 @@ dependencies = [
     "click>=8.1",
     "pyyaml>=6.0",
     "jinja2>=3.1",
+    # Windows has no system IANA tz database, so zoneinfo.ZoneInfo(...) needs this data
+    # package; on Linux/macOS it's a harmless no-op fallback.
+    "tzdata>=2024.1",
 ]
 
 [project.scripts]
