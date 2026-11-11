@@ -126,6 +126,27 @@ uv run iris range record --master 42         # record episodes + verify SOC dete
 uv run iris range detect-gate --count 10     # P3 exit gate
 ```
 
+## Synthetic generation (no Docker) — the `synth` path
+
+The project's working path is **synthesise-from-world-simulation**: one seed becomes a complete
+Input-Agreement **v2.1 SYN** package (enterprise + GRC context, posture, Wazuh/Suricata/app
+telemetry, a recorded noise layer, and a hidden truth/evaluation plane) with no Docker and no
+live sensors. See `docs/COMPLETION_REPORT.md`, `docs/contract/IRIS_Input_Agreement_v2.1.md`
+and `docs/synth/DATASHEET.md`.
+
+```bash
+uv run iris synth build --master 8 --noise medium   # one SYN package + verify -> $IRIS_DATA/store/synth
+uv run iris synth batch --count 100 --noise-mix 30/40/30
+uv run iris synth inspect --master 8                 # per-sensor telemetry counts, no write
+uv run iris synth validate $IRIS_DATA/store/synth/scenario-<id>
+uv run iris synth qa shortcut --count 40             # anti-fingerprint gate (exit 1 on fail)
+```
+
+Wazuh alerts are produced by MiniWazuh over the pinned Wazuh 4.14.9 ruleset (`iris refs verify`
+checks the pinned Wazuh/Suricata/ATT&CK bundles). Attacks are represented by the telemetry they
+leave, never by runnable exploit code. The `decision_rules` baseline (`iris.engine.baselines`)
+gives the ML Engine a floor to beat.
+
 ## Packages and the D6 baseline (P6)
 
 ```bash

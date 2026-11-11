@@ -1,0 +1,42 @@
+[
+  {
+    "master": 1,
+    "noise": "low",
+    "scenario_id": "scn-4c5be9070a02",
+    "visible_merkle": "d65fd9db79bc3d218f924bffd4ca74686b8a76beb40411379737a179aa38ae14",
+    "visible_files": 50,
+    "hidden_files": 34,
+    "n_malicious": 1,
+    "n_telemetry": 193
+  },
+  {
+    "master": 2,
+    "noise": "medium",
+    "scenario_id": "scn-8bdffccf872f",
+    "visible_merkle": "97271885e46422706e5eab967e4f7f15e8e900dfd4cae012659b6de036877c86",
+    "visible_files": 62,
+    "hidden_files": 34,
+    "n_malicious": 3,
+    "n_telemetry": 378
+  },
+  {
+    "master": 3,
+    "noise": "high",
+    "scenario_id": "scn-128b52ad6d2c",
+    "visible_merkle": "8c5dd22e43760097b4aa577b761f196faebf9015ce8c95f84f3c4b311c65e276",
+    "visible_files": 56,
+    "hidden_files": 34,
+    "n_malicious": 1,
+    "n_telemetry": 245
+  },
+  {
+    "master": 8,
+    "noise": "medium",
+    "scenario_id": "scn-168e09ba2bbc",
+    "visible_merkle": "5c0c3f7a8acb50181781171cab8bb560af7b28bd58fb89b2b5c4649b1e69ad77",
+    "visible_files": 55,
+    "hidden_files": 40,
+    "n_malicious": 4,
+    "n_telemetry": 148
+  }
+]
