@@ -1,0 +1,16 @@
+# Keep the repo's own text sources LF everywhere, so generated-output hashes and the golden
+# determinism test are reproducible across Linux/macOS/Windows.
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.sh   text eol=lf
+
+# Byte-pinned reference bundles (see src/iris/synth/refs.py): their SHA-256 digests in
+# configs/references/lock.json are computed over exact file bytes, so Git must check them out
+# identically on every OS. This rule is LAST so it overrides the type rules above: treat the
+# whole bundle tree as binary so line endings are NEVER converted (Windows LF->CRLF would
+# change the bytes and break `iris refs verify`).
+configs/references/** -text
