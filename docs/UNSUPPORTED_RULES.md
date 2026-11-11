@@ -5,8 +5,8 @@ they use a construct this reimplementation does not model. They are flagged, nev
 silently skipped (builder brief file 04 §2). MiniWazuh fidelity is **unverified** until a
 one-time `wazuh-logtest` calibration (`tools/calibrate_wazuh.sh`).
 
-- Total rules loaded: **469**, supported **443**.
-- Claimed groups (sources our emitters produce): **401/420 = 95.5%**.
+- Total rules loaded: **469**, supported **444**.
+- Claimed groups (sources our emitters produce): **402/420 = 95.7%**.
 
 Unsupported constructs seen: `regex` (OS_Regex this translator rejects), `list` (CDB
 lists), `if_fts` (first-time-seen), `check_diff`, `if_group`, `compiled_rule`, and rule
@@ -27,7 +27,6 @@ variables such as `$BAD_WORDS`.
 | 31102 | web,accesslog | compiled_rule | Ignored extensions on 400 error codes. |
 | 31108 | web,accesslog | compiled_rule | Ignored URLs (simple queries). |
 | 31109 | web,accesslog | url:regex | MSSQL Injection attempt (/ur.php, urchin.js) |
-| 31110 | web,accesslog | url:regex | PHP CGI-bin vulnerability attempt. |
 | 31140 | web,accesslog | compiled_rule | Ignoring google/msn/yahoo bots. |
 | 31166 | web,accesslog | regex | Shellshock attack attempt |
 | 31167 | web,accesslog | regex | Shellshock attack attempt |

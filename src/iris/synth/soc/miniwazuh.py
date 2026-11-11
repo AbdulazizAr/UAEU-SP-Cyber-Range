@@ -66,15 +66,54 @@ def os_match_predicate(pattern: str) -> Any:
 
 _OSREGEX_OK = re.compile(r"^[\w\s\\\.\(\)\|\^\$\+\*\?\[\]\-:/@,='\"<>#!%&;]*$")
 
+# OS_Regex punctuation class (``\p``): the set Wazuh's os_regex treats as punctuation.
+_OSREGEX_PUNCT = r"[\(\)\*\+\,\-\.:;<=>\?\[\]!\"#$%&'/@^{|}~`]"
+
+# OS_Regex backslash classes → Python equivalents. The crucial, easily-missed ones: ``\.`` means
+# "any character" in OS_Regex (Python's ``.``), while a *literal* dot ``.`` matches a dot — the
+# reverse of PCRE. Getting this wrong makes signatures like ``../..`` or ``cmd.exe`` match benign
+# paths such as ``/static/app.css``.
+_OSREGEX_CLASS = {
+    "w": r"[A-Za-z0-9_]",
+    "W": r"[^A-Za-z0-9_]",
+    "d": r"[0-9]",
+    "D": r"[^0-9]",
+    "s": r"\s",
+    "S": r"\S",
+    "t": r"\t",
+    "p": _OSREGEX_PUNCT,
+    ".": r".",  # \. = any char in OS_Regex
+}
+
 
 def os_regex_to_python(pattern: str) -> re.Pattern[str] | None:
     """Translate the OS_Regex subset the loaded rules use into a Python regex, or ``None``
-    when it uses a construct we do not model (the rule is then marked unsupported)."""
+    when it uses a construct we do not model (the rule is then marked unsupported).
+
+    OS_Regex is deliberately *not* PCRE: only ``\\w \\d \\s \\t \\p \\.`` (and their negations)
+    are metaclasses, ``+``/``*`` quantify the preceding token, ``^``/``$`` anchor, ``|`` alternates,
+    and **every other character — including ``.`` ``(`` ``)`` ``[`` ``]`` ``?`` — is a literal.**
+    """
     if not _OSREGEX_OK.match(pattern):
         return None
-    py = pattern.replace("\\p", r"[\.\,\;\:\!\?\"\(\)\{\}\[\]\-\+\=\<\>\@\#\$\%\^\&\*/]")
+    out: list[str] = []
+    i, n = 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "\\":
+            if i + 1 >= n:
+                return None
+            nxt = pattern[i + 1]
+            out.append(_OSREGEX_CLASS.get(nxt, re.escape(nxt)))
+            i += 2
+            continue
+        if c in "^$|+*":
+            out.append(c)  # anchors / alternation / quantifiers carry over to Python
+        else:
+            out.append(re.escape(c))  # all other chars (incl. literal '.') are literal
+        i += 1
     try:
-        return re.compile(py)
+        return re.compile("".join(out))
     except re.error:
         return None
 
@@ -200,6 +239,14 @@ def _parse_rule(rel: ET.Element, group_name: str) -> Rule:
         source_group=group_name,
     )
     unsupported: list[str] = []
+    # Wazuh concatenates repeated same-name pattern tags into ONE OS_Regex before compiling: a
+    # long signature OR-list is split across several tags because each pattern has a max length,
+    # and the trailing ``|`` on each fragment is the glue (e.g. rule 31103's two <url> tags, rule
+    # 31104's four). Accumulate raw text per name here and compile once after the loop, so the
+    # trailing ``|`` joins alternatives instead of becoming a match-everything empty alternative.
+    field_raw: dict[str, list[str]] = {}
+    match_raw: list[str] = []
+    regex_raw: list[str] = []
     for child in rel:
         tag = child.tag
         if tag not in _SUPPORTED_TAGS:
@@ -221,26 +268,17 @@ def _parse_rule(rel: ET.Element, group_name: str) -> Rule:
             if _WAZUH_VAR.search(_text(child)):
                 unsupported.append("match:variable")
             else:
-                rule.matches.append(os_match_predicate(_text(child)))
+                match_raw.append(_text(child))
         elif tag == "regex":
-            compiled = os_regex_to_python(_text(child))
-            if compiled is None:
-                unsupported.append("regex")
-            else:
-                rule.regex = compiled
+            regex_raw.append(_text(child))
         elif tag == "field":
             name = child.attrib.get("name", "")
-            compiled = os_regex_to_python(_text(child))
-            if compiled is None or not name:
+            if not name:
                 unsupported.append("field")
             else:
-                rule.fields.append((name, compiled))
+                field_raw.setdefault(name, []).append(_text(child))
         elif tag in _FIELD_TAGS:
-            compiled = os_regex_to_python(_text(child))
-            if compiled is None:
-                unsupported.append(f"{tag}:regex")
-            else:
-                rule.fields.append((tag, compiled))
+            field_raw.setdefault(tag, []).append(_text(child))
         elif tag in ("same_source_ip", "same_srcip", "same_src_ip"):
             rule.same.add("srcip")
         elif tag in ("same_user", "same_srcuser"):
@@ -251,6 +289,22 @@ def _parse_rule(rel: ET.Element, group_name: str) -> Rule:
             rule.mitre = tuple(_text(i) for i in child.findall("id"))
         elif tag == "group":
             rule.groups = tuple(g for g in _text(child).split(",") if g)
+    # compile the accumulated (concatenated) pattern lists once
+    if match_raw:
+        pred = os_match_predicate("".join(match_raw))
+        rule.matches.append(pred)
+    if regex_raw:
+        compiled = os_regex_to_python("".join(regex_raw))
+        if compiled is None:
+            unsupported.append("regex")
+        else:
+            rule.regex = compiled
+    for name, parts in field_raw.items():
+        compiled = os_regex_to_python("".join(parts))
+        if compiled is None:
+            unsupported.append(f"{name}:regex" if name in _FIELD_TAGS else "field")
+        else:
+            rule.fields.append((name, compiled))
     base_groups = tuple(g for g in group_name.split(",") if g)
     rule.groups = tuple(dict.fromkeys(base_groups + rule.groups))
     if unsupported:
@@ -322,6 +376,9 @@ def decode(pre: PreDecoded) -> tuple[str | None, dict[str, str]]:
         m = _WEB.match(msg)
         if m:
             return "web-accesslog", {
+                # the real Wazuh web-accesslog decoder tags events category "web-log"; the web
+                # rule chain (31100 -> 31101/31103/31104 ...) keys off it, so set it here too.
+                "category": "web-log",
                 "srcip": m.group(1),
                 "user": m.group(2),
                 "method": m.group(3),
@@ -330,7 +387,7 @@ def decode(pre: PreDecoded) -> tuple[str | None, dict[str, str]]:
                 "id": m.group(6),
                 "size": m.group(7),
             }
-        return "web-accesslog", {}
+        return "web-accesslog", {"category": "web-log"}
     if prog == "sudo":
         m = _SUDO.match(msg)
         if m:
@@ -453,6 +510,47 @@ class MiniWazuh:
             data=data,
             timestamp=ts,
             hostname=pre.hostname,
+        )
+
+    def process_event(
+        self,
+        decoded_as: str,
+        data: dict[str, str],
+        ts: datetime,
+        *,
+        msg: str = "",
+        full_log: str = "",
+        hostname: str | None = None,
+    ) -> Alert | None:
+        """Run the rule engine over an event that arrives already decoded (no syslog line to
+        predecode). This is how Wazuh handles FIM/syscheck, rootcheck and other wodle events:
+        the agent sends a structured event, a built-in decoder tags it ``decoded_as`` (e.g.
+        ``syscheck_new_entry``), and the same rule tree runs. Used for FIM so a file change on a
+        monitored asset produces a real syscheck alert (rule 550/553/554), not a silent record.
+        """
+        candidates: list[Rule] = []
+        for root in self._roots:
+            if root.decoded_as is not None and root.decoded_as != decoded_as:
+                continue
+            if root.program_name is not None:
+                continue
+            candidates.extend(self._walk(root, msg, data, decoded_as, None))
+        if not candidates:
+            return None
+        alerting = [c for c in candidates if not c.noalert and c.level > 0]
+        best = max(alerting or candidates, key=lambda r: (r.level, r.id))
+        escalated = self._frequency_escalation(best, ts, data)
+        chosen = escalated or best
+        if chosen.noalert or chosen.level == 0:
+            return None
+        return Alert(
+            rule=chosen,
+            full_log=full_log,
+            decoder=decoded_as,
+            program_name=None,
+            data=data,
+            timestamp=ts,
+            hostname=hostname,
         )
 
 

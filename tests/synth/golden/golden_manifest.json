@@ -3,40 +3,32 @@
     "master": 1,
     "noise": "low",
     "scenario_id": "scn-4c5be9070a02",
-    "visible_merkle": "da80fbd8f22fb3b9047f8c978b9e018102fe6ebfae3679a4057dfe776990e73f",
-    "visible_files": 50,
-    "hidden_files": 34,
+    "visible_merkle": "7ffed591a215c299ac8fb6d34eea63b7184aaf98a6b4d3e274fb059e359a7482",
     "n_malicious": 3,
-    "n_telemetry": 365
+    "n_telemetry": 367
   },
   {
     "master": 2,
     "noise": "medium",
     "scenario_id": "scn-8bdffccf872f",
-    "visible_merkle": "5f65fbe0479fd0b37c529931da8549bd3c9854f1ec7de0dc877ee4c5511319d7",
-    "visible_files": 62,
-    "hidden_files": 34,
+    "visible_merkle": "01ec0548c453ac413f1884156c973566f71d678d5033fac6436f3e886a91a3c1",
     "n_malicious": 3,
-    "n_telemetry": 551
+    "n_telemetry": 568
   },
   {
     "master": 3,
     "noise": "high",
     "scenario_id": "scn-128b52ad6d2c",
-    "visible_merkle": "5cbb3b9225ad5ba46f4d2f77325e8895a97006c30d76d7aa553eae07a809211a",
-    "visible_files": 56,
-    "hidden_files": 34,
+    "visible_merkle": "50ea0636840f74afb30ebe3767e0e429f832136f413d6e816906d042eea3973f",
     "n_malicious": 4,
-    "n_telemetry": 369
+    "n_telemetry": 371
   },
   {
     "master": 8,
     "noise": "medium",
     "scenario_id": "scn-168e09ba2bbc",
-    "visible_merkle": "b1bdd8d37ffe711975676ddf16300e7544cd357d78db811ed5aa3d43b7a68c39",
-    "visible_files": 55,
-    "hidden_files": 40,
+    "visible_merkle": "caacb059ea9b4b2d9a0a6c78ab641d393adaf0727e24023f2d28770b137ff764",
     "n_malicious": 4,
-    "n_telemetry": 304
+    "n_telemetry": 310
   }
 ]

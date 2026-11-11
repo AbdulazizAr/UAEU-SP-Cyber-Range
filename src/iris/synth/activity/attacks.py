@@ -227,12 +227,14 @@ def ssh_spray(ctx: AttackContext, rng: random.Random) -> list[Footprint]:
 
 
 def web_exploit(ctx: AttackContext, rng: random.Random) -> list[Footprint]:
-    # suspicious request *shapes* only (encoded markers), never a working payload
+    # suspicious request *shapes* only — the markers the real Wazuh web rules key on (SQLi
+    # keywords, path traversal), never a working payload. These make F2 detectable (rules
+    # 31101/31103/31104) instead of silent.
     probes = [
-        ("/items?id=1%27", 500),
-        ("/search?q=%27%20OR%20%271%27=%271", 403),
-        ("/download?file=..%2f..%2fetc%2fpasswd", 403),
-        ("/api/v1/user?id=5%27", 500),
+        ("/items?id=1%20union%20select%20null%20from%20users", 500),
+        ("/search?q=1%20or%20%20from%20accounts", 403),
+        ("/download?file=../../../etc/passwd", 403),
+        ("/api/v1/user?id=5%20union%20select%20password%20from%20users", 500),
     ]
     fps: list[Footprint] = []
     for (url, status), ts in zip(probes, _spread(ctx, len(probes), rng), strict=False):

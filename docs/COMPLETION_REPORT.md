@@ -29,10 +29,13 @@ The frozen live path (`iris.live`, `compose/`, `images/`) is untouched and still
 ### MiniWazuh
 A faithful reimplementation of the Wazuh analysis subset (predecoder, decoders, rule engine
 with `if_sid`/`if_matched_sid`+frequency/`match`/`regex`/dynamic-field tags/`maxsize`). Alerts
-are **produced** by running it over the emitted raw lines, so every alert id/level/group/MITRE
-tag is real and reproduces on re-run. Coverage of the rule groups we rely on: **95.5 %**;
-the 26 unsupported rules are listed in `docs/UNSUPPORTED_RULES.md`. Fidelity is **unverified**
-until a one-time `wazuh-logtest` calibration (not in CI).
+are **produced** by running it over the emitted raw lines (and, for FIM, over decoded syscheck
+events), so every alert id/level/group/MITRE tag is real and reproduces on re-run. Coverage of
+the rule groups we rely on: **95.7 %** (402/420); the unsupported rules are listed in
+`docs/UNSUPPORTED_RULES.md`. The OS_Regex translator is faithful to Wazuh semantics (literal `.`
+matches a dot, `\.` matches any char, repeated same-field pattern tags concatenate into one
+OR-list), so dotted signatures like `../..` and `cmd.exe` match correctly without false positives.
+Fidelity is **unverified** until a one-time `wazuh-logtest` calibration (not in CI).
 
 ## Measured results (40-scenario batch, seeds 0–39)
 
@@ -101,4 +104,26 @@ A review of the generated data surfaced and fixed three real quality issues:
 - **Shortcut-test correctness:** the probe was corrected to use only volume-invariant surface
   features (record length, schema, noise artifacts), excluding event counts and
   volume-confounded timing entropy — those are legitimate detector signal, not a generator
-  fingerprint. The gate is unchanged at AUC ≤ 0.65 and now passes robustly (~0.57).
+  fingerprint. The gate is unchanged at AUC ≤ 0.65 and now passes robustly (0.38–0.55 over
+  seed ranges 32–64).
+
+A second review of **detection fidelity** (do attacks actually trip the rules a SOC would see?)
+found and fixed two silent-attack gaps:
+- **F2 web attacks produced no alerts at all.** Three faults compounded: the web decoder never
+  tagged events `category=web-log` (so the whole web rule chain 31100→31101/31103/31104 was
+  dead); the OS_Regex translator treated `.` as PCRE any-char (so `../..` matched benign paths
+  like `/static/app.css` — a false positive — while the real signatures never bound); and
+  repeated same-field `<url>` tags were AND'd instead of concatenated into Wazuh's single
+  OR-list. With the translator made faithful and the decoder corrected, SQLi now trips rule
+  31103 and traversal trips 31104, while benign traffic stays clean. F2 detection went
+  **0 → 100 %** of web-attack episodes alerting.
+- **F7 persistence was mostly invisible.** FIM changes to `authorized_keys`/`cron` were written
+  to `fim.jsonl` but never run through the rule engine. Added `MiniWazuh.process_event` for
+  pre-decoded syscheck events, so a monitored FIM change now fires the real syscheck rule
+  (550 modified / 554 added / 553 deleted). Persistence is now detected wherever the FIM control
+  is actually on, and legitimately silent where it is off (realistic partial observability),
+  instead of silent everywhere.
+
+Per-family detection after the fixes (40-scenario batch, share of malicious episodes with a
+Wazuh/Suricata alert): F1 0.80, F2 1.00, F4 1.00, F5 1.00, F6 1.00, F9 1.00; F3/F7 partial by
+control state; F8 (insider) surfaces through app/auth evidence, not IDS alerts, by design.

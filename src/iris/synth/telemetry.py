@@ -170,20 +170,46 @@ def assemble_telemetry(
                 aid = fp.asset_id
                 if aid is None or not world.is_monitored(aid) or not world.soc.fim.get(aid, False):
                     continue
+                if agent_dark.get(aid) and fp.ts >= agent_dark[aid]:
+                    continue  # sensor went dark (agent disabled) -> no FIM either
+                path = fp.data["path"]
+                event = fp.data["event"]
                 fim.append(
                     env(
                         "wazuh_fim",
                         fp.ts,
-                        {
-                            "path": fp.data["path"],
-                            "event": fp.data["event"],
-                            "mode": fp.data.get("mode", "scheduled"),
-                        },
+                        {"path": path, "event": event, "mode": fp.data.get("mode", "scheduled")},
                         eid,
                         aid,
                         fp.activity_id,
                     )
                 )
+                # A monitored FIM change is a syscheck event: Wazuh tags it decoded_as
+                # syscheck_{new_entry,integrity_changed,deleted} and rule 554/550/553 fires. Run
+                # it through the engine so persistence (authorized_keys, cron) is detectable, not
+                # just a silent fim.jsonl record.
+                decoded_as = {
+                    "added": "syscheck_new_entry",
+                    "modified": "syscheck_integrity_changed",
+                    "deleted": "syscheck_deleted",
+                }.get(event)
+                if decoded_as is not None:
+                    verb = {
+                        "added": "added to the system",
+                        "modified": "modified",
+                        "deleted": "deleted",
+                    }[event]
+                    fim_alert = mw.process_event(
+                        decoded_as,
+                        {"category": "ossec", "file": path, "path": path},
+                        fp.ts,
+                        full_log=f"File '{path}' {verb}.",
+                        hostname=world.assets[aid].hostname,
+                    )
+                    if fim_alert is not None:
+                        loaded_rule_ids.add(fim_alert.rule.id)
+                        inner = _wazuh_alert(fim_alert, world.assets[aid].hostname)
+                        alerts.append(env("wazuh_alert", fp.ts, inner, eid, aid, fp.activity_id))
             elif fp.kind == "flow":
                 src, dst = fp.data["src_ip"], fp.data["dst_ip"]
                 if not _flow_is_seen(world, src, dst):
