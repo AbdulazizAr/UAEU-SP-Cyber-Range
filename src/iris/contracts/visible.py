@@ -53,7 +53,7 @@ class VisibleManifest(StrictModel):
     """``manifest.visible.json``. Deliberately excludes generator version, seeds, tier,
     group_id, lineage, real creation date and activity counts (they would leak)."""
 
-    schema_version: Literal["2.0.0"] = "2.0.0"
+    schema_version: Literal["2.0.0", "2.1.0"] = "2.0.0"
     package_id: PackageId
     scenario_id: ScenarioId
     organization_id: str = Field(pattern=r"^ORG-\d{4}$")

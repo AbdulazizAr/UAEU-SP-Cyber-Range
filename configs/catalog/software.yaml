@@ -1,0 +1,90 @@
+# Security-relevant software catalog for synthetic SBOM + scanner findings (brief file 03).
+#
+# This is NOT the full distro package set — it is the security-relevant subset the SBOM and
+# the CVE seed catalog join on, plus a representative OS base so package counts look real.
+# Versions are real released strings; release DATES are deliberately omitted here because
+# date-gating keys off each CVE's own published_at (cve_seed.yaml), never a package date, so
+# no package-release date has to be asserted. A host pins its versions at scenario start and
+# changes them only through logged change events.
+#
+# version lists are ordered oldest -> newest; `patch_floor_by_maturity` picks the index a
+# host of each maturity starts at (low maturity lags = older = more findings).
+catalog_version: "0.1.0"
+
+# Representative OS base package counts per profile (SBOM size realism; brief file 03 §2).
+os_base_package_count:
+  debian-12: 180
+  ubuntu-22.04: 190
+  ubuntu-24.04: 200
+  rocky-9: 170
+  alma-9: 170
+
+purl_type:
+  debian-12: deb
+  ubuntu-22.04: deb
+  ubuntu-24.04: deb
+  rocky-9: rpm
+  alma-9: rpm
+
+# Security-relevant packages tracked explicitly. `versions` are real released strings.
+packages:
+  openssh-server:
+    purl_name: openssh-server
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04, rocky-9, alma-9]
+    versions: ["8.9p1", "9.2p1", "9.6p1", "9.8p1"]
+    recipe: openssh
+  openssl:
+    purl_name: openssl
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04, rocky-9, alma-9]
+    versions: ["1.1.1n", "3.0.2", "3.0.11", "3.0.14"]
+  libc6:
+    purl_name: glibc
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["2.31", "2.35", "2.36", "2.38"]
+  sudo:
+    purl_name: sudo
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04, rocky-9, alma-9]
+    versions: ["1.9.5p1", "1.9.9", "1.9.13p3", "1.9.15p5"]
+  bash:
+    purl_name: bash
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["5.1", "5.2.15", "5.2.21"]
+  systemd:
+    purl_name: systemd
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["247", "252", "255"]
+  nginx:
+    purl_name: nginx
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["1.18.0", "1.22.1", "1.24.0", "1.26.2"]
+    recipe: nginx
+  postgresql:
+    purl_name: postgresql
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["13.16", "15.6", "16.4"]
+    recipe: postgresql
+  samba:
+    purl_name: samba
+    os_profiles: [debian-12, ubuntu-22.04]
+    versions: ["4.17.12", "4.19.5"]
+    recipe: samba
+  openldap:
+    purl_name: openldap
+    os_profiles: [debian-12, ubuntu-22.04]
+    versions: ["2.5.13", "2.6.7"]
+    recipe: openldap
+  postfix:
+    purl_name: postfix
+    os_profiles: [debian-12, ubuntu-22.04]
+    versions: ["3.7.11", "3.8.6"]
+    recipe: postfix
+  python3:
+    purl_name: python3
+    os_profiles: [debian-12, ubuntu-22.04, ubuntu-24.04]
+    versions: ["3.10.12", "3.11.2", "3.12.3"]
+
+# starting version index by maturity (0 = oldest in the list). Low maturity lags behind.
+patch_floor_by_maturity:
+  high: 0.75   # fraction into the version list (toward newest)
+  medium: 0.45
+  low: 0.1

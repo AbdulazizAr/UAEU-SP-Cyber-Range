@@ -187,14 +187,20 @@ def refs_fetch(ids: tuple[str, ...], repin: bool) -> None:
 
 @refs.command("verify")
 def refs_verify() -> None:
-    """Re-hash every reference against the lock."""
+    """Re-hash every reference (single files and the committed synth bundles) against the lock."""
     from iris.references.registry import load_lock, load_registry, verify
+    from iris.synth.refs import verify_bundles
 
     results = verify(load_registry(), load_lock())
     for r in results:
         colour = {"ok": "green", "mismatch": "red"}.get(r.status, "yellow")
         click.secho(f"{r.status:9} {r.id} {r.detail}", fg=colour)
-    sys.exit(1 if any(r.status == "mismatch" for r in results) else 0)
+    bundles = verify_bundles()
+    for b in bundles:
+        colour = {"ok": "green", "mismatch": "red"}.get(b.status, "yellow")
+        click.secho(f"{b.status:9} {b.bundle_id} (bundle) {b.detail}", fg=colour)
+    bad = any(r.status == "mismatch" for r in results) or any(b.status == "mismatch" for b in bundles)
+    sys.exit(1 if bad else 0)
 
 
 @refs.command("show")
@@ -1497,6 +1503,138 @@ def spike_all(no_build: bool) -> None:
     for r in results:
         _report(r)
     sys.exit(0 if all(r.passed for r in results) else 1)
+
+
+# ---------------------------------------------------------------- synth (synthetic path)
+
+
+@main.group()
+def synth() -> None:
+    """Synthetic scenario generation (no Docker): build v2.1 SYN packages."""
+
+
+def _synth_dir(out: Path | None) -> Path:
+    base = out or paths().store / "synth"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+@synth.command("build")
+@click.option("--master", type=int, required=True)
+@click.option("--noise", type=click.Choice(["low", "medium", "high"]), default="medium", show_default=True)
+@click.option(
+    "--out", type=click.Path(file_okay=False, path_type=Path), help="Default: $IRIS_DATA/store/synth"
+)
+def synth_build(master: int, noise: str, out: Path | None) -> None:
+    """Build one synthetic v2.1 package (context + posture + telemetry + noise) and verify it."""
+    from iris.packager.verify import verify_package
+    from iris.synth.build import build_synth_scenario, write_synth_scenario
+
+    built = build_synth_scenario(SeedSet.from_master(master), noise_level=noise)
+    try:
+        res = write_synth_scenario(built, _synth_dir(out))
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"{res.package_id}  {res.root}")
+    click.echo(
+        f"  malicious activities {built.n_malicious}, telemetry records {built.n_telemetry}, noise {noise}"
+    )
+    click.echo(f"  visible files {res.visible_files}, hidden files {res.hidden_files}")
+    _verdict(verify_package(res.root))
+
+
+@synth.command("batch")
+@click.option("--start", type=int, default=0, show_default=True)
+@click.option("--count", type=int, default=20, show_default=True)
+@click.option("--noise-mix", default="30/40/30", show_default=True, help="low/medium/high percentages")
+@click.option(
+    "--out", type=click.Path(file_okay=False, path_type=Path), help="Default: $IRIS_DATA/store/synth"
+)
+def synth_batch(start: int, count: int, noise_mix: str, out: Path | None) -> None:
+    """Build and verify many synthetic packages; report counts and determinism-friendly stats."""
+    import time as _time
+
+    from iris.packager.verify import verify_package
+    from iris.synth.build import build_synth_scenario, write_synth_scenario
+    from iris.synth.qa.batch import noise_for_index
+
+    try:
+        lo, mid, hi = (int(x) for x in noise_mix.split("/"))
+    except ValueError as exc:
+        raise click.ClickException("noise-mix must look like 30/40/30") from exc
+    mix = {"low": lo / 100, "medium": mid / 100, "high": hi / 100}
+    base = _synth_dir(out)
+    t0 = _time.perf_counter()
+    failed = built = total_tel = total_mal = 0
+    counts = {"low": 0, "medium": 0, "high": 0}
+    for i in range(count):
+        level = noise_for_index(i, mix)
+        counts[level] += 1
+        b = build_synth_scenario(SeedSet.from_master(start + i), noise_level=level)
+        root = base / f"scenario-{b.assembled.scenario_id}"
+        if not root.exists():
+            write_synth_scenario(b, base)
+            built += 1
+        if not verify_package(root).ok:
+            failed += 1
+            click.secho(f"verify FAILED: {root}", fg="red")
+        total_tel += b.n_telemetry
+        total_mal += b.n_malicious
+    secs = _time.perf_counter() - t0
+    click.echo(f"{count} SYN packages in {base} ({built} new) in {secs:.1f}s; verify failures: {failed}")
+    click.echo(f"  noise mix {counts}; telemetry records {total_tel}; malicious activities {total_mal}")
+    sys.exit(1 if failed else 0)
+
+
+@synth.command("validate")
+@click.argument("root", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def synth_validate(root: Path) -> None:
+    """Integrity + contract + no-peek audit of a synthetic package."""
+    from iris.packager.verify import verify_package
+
+    click.echo(str(root))
+    _verdict(verify_package(root))
+
+
+@synth.command("inspect")
+@click.option("--master", type=int, required=True)
+@click.option("--noise", type=click.Choice(["low", "medium", "high"]), default="medium")
+def synth_inspect(master: int, noise: str) -> None:
+    """Summarise a synthetic scenario without writing it (counts per sensor and truth)."""
+    from iris.synth.build import build_synth_scenario
+
+    b = build_synth_scenario(SeedSet.from_master(master), noise_level=noise)
+    vis = b.assembled.visible
+    click.echo(
+        f"scenario {b.assembled.scenario_id}  org {b.assembled.spec.organization.industry.value} "
+        f"size {b.assembled.spec.organization.size.value}"
+    )
+    for key in sorted(vis):
+        if key.startswith("telemetry/") and isinstance(vis[key], list):
+            click.echo(f"  {key}: {len(vis[key])}")
+    click.echo(f"  malicious activities (hidden): {b.n_malicious}")
+
+
+@synth.group("qa")
+def synth_qa() -> None:
+    """Release-gate quality checks for synthetic batches."""
+
+
+@synth_qa.command("shortcut")
+@click.option("--count", type=int, default=30, show_default=True)
+@click.option("--start", type=int, default=0, show_default=True)
+def synth_qa_shortcut(count: int, start: int) -> None:
+    """Anti-fingerprint shortcut test: a trivial model must NOT separate attack from benign."""
+    from iris.synth.qa.batch import run_shortcut
+
+    result, batch = run_shortcut(count, start)
+    click.echo(json.dumps(result.to_dict(), indent=2))
+    click.echo(f"noise mix: {batch.level_counts}")
+    if result.passed:
+        click.secho("shortcut test PASSED (data does not leak the generator)", fg="green")
+    else:
+        click.secho("shortcut test FAILED: increase noise/hard negatives; do not weaken thresholds", fg="red")
+    sys.exit(0 if result.passed else 1)
 
 
 # ---------------------------------------------------------------- checks

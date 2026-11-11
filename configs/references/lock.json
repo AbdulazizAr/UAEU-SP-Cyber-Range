@@ -1,1 +1,27 @@
-{}
+{
+  "attack-synth": {
+    "files": 2,
+    "kind": "bundle",
+    "sha256": "2d89433193a3e85af42229836be54dbc2c92db4efdb8a8f08b6f50c8755e041f",
+    "size_bytes": 3268953,
+    "source": "mitre-attack/attack-stix-data enterprise-attack-20.0.json",
+    "source_sha256": "2339a3c36353d5ee2c07e98af3fafbf00761e0e3979ede06402657445b7b4278",
+    "version": "20.0"
+  },
+  "suricata-rules": {
+    "files": 12,
+    "kind": "bundle",
+    "sha256": "2200681b55f78c72293dba4d39d0a75abc15cbc49ce942ce89979c09c08a0c4b",
+    "size_bytes": 57159,
+    "source": "github.com/OISF/suricata@suricata-8.0.6",
+    "version": "8.0.6"
+  },
+  "wazuh-ruleset": {
+    "files": 24,
+    "kind": "bundle",
+    "sha256": "b85305c0e8e8c38d0bde4904f67ce7d766da63a63b6ae8ad303cb8bef47c5901",
+    "size_bytes": 204629,
+    "source": "github.com/wazuh/wazuh@v4.14.9",
+    "version": "4.14.9"
+  }
+}

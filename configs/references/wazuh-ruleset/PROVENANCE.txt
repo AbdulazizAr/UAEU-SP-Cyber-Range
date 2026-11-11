@@ -1,0 +1,5 @@
+Wazuh ruleset subset, extracted from github.com/wazuh/wazuh tag v4.14.9
+commit bed556db3f4f535cb3a585f3d9e7f35a6acf0f58 (2026-10-08).
+Only the rule/decoder groups MiniWazuh evaluates are included (sshd, pam, sudo, su,
+cron, syslog, web/apache/nginx, systemd, postgresql, auditd, syscheck/FIM in ossec base).
+Licensed GPLv2 (Wazuh Inc.). Unmodified copies; see https://github.com/wazuh/wazuh

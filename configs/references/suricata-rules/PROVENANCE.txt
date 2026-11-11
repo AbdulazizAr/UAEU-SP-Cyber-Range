@@ -1,0 +1,5 @@
+Suricata built-in event rules, from github.com/OISF/suricata tag suricata-8.0.6
+commit 4c28cc1b4ac64f48efdca6ce3e09748227a04a7e (2026-07-07).
+These are Suricata's own decoder/app-layer event signatures (GPLv2, OISF).
+The full Emerging Threats Open ruleset is NOT fetchable offline here; synthetic
+Suricata alerts use these built-in SIDs plus our behaviour rules. No ET SID invented.
