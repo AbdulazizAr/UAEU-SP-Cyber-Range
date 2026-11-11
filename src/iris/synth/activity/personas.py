@@ -193,10 +193,25 @@ def machine_noise(
     world: World, asset_id: str, start: datetime, end: datetime, rng: random.Random
 ) -> list[Footprint]:
     host = world.assets[asset_id].hostname
+    units = [
+        "cron.service",
+        "systemd-timesyncd.service",
+        "apt-daily.service",
+        "logrotate.service",
+        "man-db.service",
+        "fstrim.service",
+    ]
+    actions = [
+        "Started",
+        "Succeeded",
+        "Deactivated successfully",
+        "Finished daily apt download activities",
+        "Consumed 1.284s CPU time",
+        "Reached target timers, reloaded system logger configuration",
+    ]
     fps: list[Footprint] = []
     for ts in _times(start, end, rng.randint(2, 8), rng):
-        unit = rng.choice(["cron.service", "systemd-timesyncd.service", "apt-daily.service"])
-        line = emitters.systemd_unit(ts, host, unit, rng.choice(["Started", "Succeeded", "Deactivated"]))
+        line = emitters.systemd_unit(ts, host, rng.choice(units), rng.choice(actions))
         fps.append(
             Footprint(
                 "raw_log",
@@ -204,6 +219,125 @@ def machine_noise(
                 {"asset_id": asset_id, "host": host, "program": "systemd", "line": line},
                 None,
                 asset_id,
+            )
+        )
+    return fps
+
+
+def routine_ssh(
+    world: World,
+    target_asset: str,
+    user: str,
+    src_ip: str,
+    start: datetime,
+    end: datetime,
+    rng: random.Random,
+) -> list[Footprint]:
+    """Normal admin/service SSH sessions (clean key logins). Gives benign episodes the same ssh
+    record types attacks have, so surface form (length/timing) doesn't fingerprint attacks."""
+    host = world.assets[target_asset].hostname
+    fps: list[Footprint] = []
+    for ts in _times(start, end, rng.randint(1, 4), rng):
+        pid = rng.randint(1200, 1800)
+        line = emitters.ssh_accepted(
+            ts, host, pid, user, src_ip, rng.randint(30000, 60000), method="publickey"
+        )
+        fps.append(
+            Footprint(
+                "raw_log",
+                ts,
+                {"asset_id": target_asset, "host": host, "program": "sshd", "line": line},
+                None,
+                target_asset,
+            )
+        )
+        fps.append(
+            Footprint(
+                "auth_event",
+                ts,
+                {
+                    "asset_id": target_asset,
+                    "account": user,
+                    "success": True,
+                    "src_ip": src_ip,
+                    "service": "ssh",
+                    "method": "publickey",
+                    "mfa_used": True,
+                },
+                None,
+                target_asset,
+            )
+        )
+    return fps
+
+
+def app_traffic(
+    world: World,
+    target_asset: str,
+    user: str,
+    src_ip: str,
+    start: datetime,
+    end: datetime,
+    rng: random.Random,
+) -> list[Footprint]:
+    """Normal application/database use (200-OK API and query events). Benign app-event volume the
+    model must not confuse with insider misuse."""
+    urls = [
+        "/api/v1/orders?status=open&page=3&limit=50",
+        "/api/v1/items/48213/details",
+        "/api/v1/profile?fields=name,email,roles",
+        "/healthz",
+        "/api/v1/search?q=invoice&from=2026-01-01&sort=desc",
+        "/static/js/app.bundle.min.js",
+    ]
+    fps: list[Footprint] = []
+    for ts in _times(start, end, rng.randint(3, 12), rng):
+        fps.append(
+            Footprint(
+                "app_event",
+                ts,
+                {
+                    "asset_id": target_asset,
+                    "src_ip": src_ip,
+                    "service": "web",
+                    "method": rng.choice(["GET", "GET", "POST"]),
+                    "url": rng.choice(urls),
+                    "status": rng.choices([200, 200, 200, 304, 404], weights=[6, 3, 3, 2, 1])[0],
+                    "result": "ok",
+                    "identity": user,
+                },
+                None,
+                target_asset,
+            )
+        )
+    return fps
+
+
+def service_flows(
+    world: World, src_ip: str, dst_asset: str, start: datetime, end: datetime, rng: random.Random
+) -> list[Footprint]:
+    """Normal service-to-service network flows (DB connections, API calls). Benign flow records so
+    flows are not an attack-only record type."""
+    dst_ip = world.assets[dst_asset].attachments[0].ip if world.assets[dst_asset].attachments else "10.0.0.5"
+    port = rng.choice([443, 5432, 8080, 3306, 6379])
+    fps: list[Footprint] = []
+    for ts in _times(start, end, rng.randint(3, 10), rng):
+        fps.append(
+            Footprint(
+                "flow",
+                ts,
+                {
+                    "src_ip": src_ip,
+                    "dst_ip": dst_ip,
+                    "dst_port": port,
+                    "proto": "tcp",
+                    "bytes_toserver": rng.randint(200, 8000),
+                    "bytes_toclient": rng.randint(200, 40000),
+                    "pkts": rng.randint(6, 40),
+                    "app": "tls" if port == 443 else "flow",
+                },
+                None,
+                None,
             )
         )
     return fps

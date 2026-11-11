@@ -83,7 +83,9 @@ templates:
     technique: T1021.004
     executor: lateral_ssh
     weakness: auth.shared_ssh_key
-    target_roles: [database, file_server, directory, backup_server]
+    # a shared SSH key enables pivoting to any internal server that trusts it, so the target
+    # may be any server role (not only data stores) — keeps F5 from being starved.
+    target_roles: [database, file_server, directory, backup_server, app_server, web_server, bastion, dns_server, mail_server]
     expected_rules: [5715]
     expected_detection: ssh_from_unusual_internal_host
   F6_exfil_transfer:

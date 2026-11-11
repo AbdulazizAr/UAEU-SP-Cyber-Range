@@ -106,13 +106,13 @@ def family_name(family: str, root: Path | None = None) -> str:
 
 
 def _spread(ctx: AttackContext, n: int, rng: random.Random) -> list[datetime]:
-    """n timestamps across the window; fast/regular for low skill, jittered for high skill."""
+    """n timestamps spread irregularly across the episode window, drawn from the SAME
+    uniform-over-window distribution benign activity uses. A regular cadence or a distinctive
+    burst shape would be a cheap timing fingerprint a model could exploit instead of learning
+    real behaviour, so attack timing is statistically indistinguishable from benign timing; the
+    attack signal lives in WHAT happens, not in the clock pattern (shortcut test)."""
     span = max(1.0, (ctx.end - ctx.start).total_seconds())
-    if ctx.skill >= 4:
-        points = sorted(rng.uniform(0, span) for _ in range(n))  # low-and-slow, irregular
-    else:
-        step = span / (n + 1)
-        points = [step * (i + 1) + rng.uniform(-step / 4, step / 4) for i in range(n)]
+    points = sorted(rng.uniform(0, span) for _ in range(n))
     # distinct timestamps (microsecond offset by index) so every footprint has a unique event id
     return [ctx.start + timedelta(seconds=max(0.0, p), microseconds=i) for i, p in enumerate(points)]
 

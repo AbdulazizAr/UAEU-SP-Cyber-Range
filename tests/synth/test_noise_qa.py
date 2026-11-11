@@ -131,9 +131,12 @@ def test_grc_coupling_records_validate_against_contract():
 
 @pytest.mark.slow
 def test_shortcut_test_passes_on_a_batch():
-    result, batch = run_shortcut(24)
+    # a volume-invariant surface model must NOT separate attack from benign episodes. 48 scenarios
+    # keeps the grouped-CV AUC estimate stable (small batches are noisy). Measured mean ~0.57 over
+    # seed ranges; if this fails, the generator leaked surface form — fix the data, not the threshold.
+    result, batch = run_shortcut(48)
     assert result.passed, result.to_dict()
     # noise mix roughly 30/40/30
     total = sum(batch.level_counts.values())
     assert batch.level_counts["medium"] >= batch.level_counts["low"]
-    assert total == 24
+    assert total == 48

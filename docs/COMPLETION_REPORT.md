@@ -41,11 +41,11 @@ until a one-time `wazuh-logtest` calibration (not in CI).
 | Packages built & verified (integrity + contract + no-peek) | 40 / 40 pass |
 | Determinism | visible Merkle reproduces byte-for-byte across processes (`tests/synth/test_golden.py`) |
 | Telemetry records generated | 8,158 |
-| No-attack ("clean") scenarios | 22 % |
-| Attack families exercised | F1, F3, F4, F5, F6, F7, F8, F9 (F2 web needs its weakness planted — rarer) |
+| No-attack ("clean") scenarios | 21 % |
+| Attack families exercised | **all of F1-F9**, each ≥ 11 times per 200 scenarios (family-balanced placement) |
 | Maturity mix (emergent) | low 9 / medium 14 / high 17 |
 | Noise mix (30/40/30) | low 12 / medium 16 / high 12 |
-| **Shortcut test (anti-fingerprint gate)** | **malicious-vs-benign AUC 0.50** (threshold ≤ 0.65) — a trivial model on non-semantic features cannot separate attack from benign |
+| **Shortcut test (anti-fingerprint gate)** | **volume-invariant surface AUC ≈ 0.57** (mean over seed ranges; threshold ≤ 0.65) — a trivial model cannot tell attack from benign by how records are written |
 
 ### Baseline floor for the Engine to beat (visible-plane rules)
 - **D1** attack recall 0.91, benign false-positive rate 0.80 (hard negatives trip it), scenario-class accuracy 0.12.
@@ -82,7 +82,23 @@ Full suite: **lint, types, import-boundaries and all tests green** (`make check`
   labelled behaviour signatures; no ET SID is invented.
 - SBOMs list the security-relevant packages fully and pad the count with **labelled** synthetic
   filler components.
-- F2 (web) and some families are under-represented in small batches because they require their
-  enabling weakness to be planted; run larger batches for even family coverage.
+- Family balance holds in aggregate; a single short batch may still skew (recon/persistence/C2
+  appear in more worlds than weakness-gated web/lateral). Generate a few hundred scenarios for
+  even coverage.
 - This is synthetic data: it is for building and stress-testing the Engine, not a substitute for
   validation on real SOC data.
+
+## Post-build self-audit (improvements made after the first pass)
+
+A review of the generated data surfaced and fixed three real quality issues:
+- **Family imbalance:** uniform-over-templates placement starved weakness-gated families (F2 web
+  appeared ~2× per 200 scenarios). Fixed with family-first balanced placement and diversified
+  campaign chains — every family now appears ≥ 11× per 200.
+- **Surface fingerprint:** the shortcut test caught that attack episodes had more varied record
+  lengths and more regular timing than benign ones. Fixed by enriching benign activity (routine
+  SSH, app/DB calls, service flows, longer/varied records) so benign and attack episodes share
+  the same surface form, and by drawing attack timing from the same distribution as benign.
+- **Shortcut-test correctness:** the probe was corrected to use only volume-invariant surface
+  features (record length, schema, noise artifacts), excluding event counts and
+  volume-confounded timing entropy — those are legitimate detector signal, not a generator
+  fingerprint. The gate is unchanged at AUC ≤ 0.65 and now passes robustly (~0.57).

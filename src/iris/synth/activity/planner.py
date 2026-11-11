@@ -26,12 +26,13 @@ from iris.synth.world import World, internet_zone
 PLANNER_VERSION = "synth-planner-0.1.0"
 CLEAN_SCENARIO_RATE = 0.20
 CAMPAIGN_RATE = 0.30  # share of attack scenarios with a multi-stage campaign (brief >= 25%)
-CAMPAIGN_CHAIN = (
-    "F4_portscan",
-    "F1_ssh_bruteforce",
-    "F5_ssh_pivot",
-    "F7_authorized_keys",
-    "F6_exfil_transfer",
+# several multi-stage chains so campaigns exercise more than one family mix (one chosen per
+# campaign). Stages whose precondition is absent in a given world are skipped (a detection gap).
+CAMPAIGN_CHAINS = (
+    ("F4_portscan", "F1_ssh_bruteforce", "F5_ssh_pivot", "F7_authorized_keys", "F6_exfil_transfer"),
+    ("F4_host_discovery", "F2_web_sqli", "F3_idor", "F7_cron_persistence", "F6_archive_stage"),
+    ("F1_ssh_spray", "F3_sudo_abuse", "F7_agent_disable", "F9_c2_beacon"),
+    ("F4_portscan", "F2_web_traversal", "F5_ssh_pivot", "F9_c2_beacon", "F6_exfil_transfer"),
 )
 
 
@@ -85,6 +86,27 @@ def _pick_target(world: World, template: AttackTemplate, rng: random.Random) -> 
         return "", None  # precondition absent -> skip (not a failing-by-design template here)
     candidates = [a for r in template.target_roles for a in _assets_by_role(world, r)]
     return (rng.choice(candidates), None) if candidates else ("", None)
+
+
+def _has_target(world: World, template: AttackTemplate) -> bool:
+    """Whether this template can be placed in this world (its precondition is satisfiable)."""
+    if template.weakness is not None:
+        wk = next((w for w in world.spec.weaknesses if w.module == template.weakness), None)
+        return wk is not None and world.assets[wk.asset_id].role.value in template.target_roles
+    return any(_assets_by_role(world, r) for r in template.target_roles)
+
+
+def _placeable_by_family(
+    world: World, templates: dict[str, AttackTemplate]
+) -> dict[str, list[AttackTemplate]]:
+    """Placeable templates grouped by family, so selection can balance across families instead
+    of favouring families with more templates or no weakness gate (keeps every family present
+    in a batch rather than starving web/privilege/lateral attacks)."""
+    out: dict[str, list[AttackTemplate]] = {}
+    for t in templates.values():
+        if _has_target(world, t):
+            out.setdefault(t.family, []).append(t)
+    return out
 
 
 def _build_attack(
@@ -210,6 +232,39 @@ def _benign_baseline(
     for aid_asset in sorted(world.assets):
         if world.is_monitored(aid_asset) and rng.random() < 0.5:
             acts.append(wrap("machine", personas.machine_noise(world, aid_asset, ep.start, ep.end, rng)))
+    # routine benign traffic on the SAME record types attacks use (ssh logins, app/db calls,
+    # service flows), so a benign episode's surface form (record-length spread, timing) matches
+    # an attack episode's and cannot be used to fingerprint attacks (keeps the shortcut test honest).
+    servers = [
+        a
+        for r in ("app_server", "web_server", "database", "bastion", "file_server", "directory")
+        for a in _assets_by_role(world, r)
+    ]
+    office = _office_ip(world, rng)
+    for aid_asset in servers:
+        if not world.is_monitored(aid_asset):
+            continue
+        ident = next((i for i in world.spec.identities if aid_asset in i.assigned_assets), None)
+        user = ident.username if ident else "svc-app"
+        if rng.random() < 0.7:
+            acts.append(
+                wrap(
+                    "routine_ssh", personas.routine_ssh(world, aid_asset, user, office, ep.start, ep.end, rng)
+                )
+            )
+        if rng.random() < 0.7:
+            acts.append(
+                wrap(
+                    "app_traffic",
+                    personas.app_traffic(
+                        world, aid_asset, user, (clients[0] if clients else office), ep.start, ep.end, rng
+                    ),
+                )
+            )
+        if rng.random() < 0.6:
+            acts.append(
+                wrap("service_flows", personas.service_flows(world, office, aid_asset, ep.start, ep.end, rng))
+            )
     # hard negatives (ratio sampled per scenario): authorized scan, nightly backup, admin sudo, typo login
     if admins and rng.random() < hard_neg_ratio:
         target = rng.choice(sorted(world.assets))
@@ -292,11 +347,17 @@ def plan_scenario(spec: ScenarioSpec, world: World, synth: SynthSeeds) -> Scenar
             campaign_id = "CMP-" + sha256_hex(f"{scn}|campaign")[:10]
             _place_campaign(world, episodes, templates, synth, scn, campaign_id)
         else:
-            # 1..N independent malicious activities spread over the episodes
+            # 1..N independent malicious activities spread over the episodes. Choose a FAMILY
+            # first (balanced across placeable families), then a template within it, so no
+            # family is starved by uniform-over-templates selection (brief: every family present).
+            by_family = _placeable_by_family(world, templates)
+            families = sorted(by_family)
             for ep in episodes:
                 erng = synth.rng("activity", "attack", scn, ep.index)
                 for _i in range(erng.randint(0, 2)):
-                    tmpl = erng.choice(list(templates.values()))
+                    if not families:
+                        break
+                    tmpl = erng.choice(by_family[erng.choice(families)])
                     act = _build_attack(world, tmpl, ep, erng, scn)
                     if act is not None:
                         ep.activities.append(act)
@@ -313,7 +374,8 @@ def _place_campaign(
     campaign_id: str,
 ) -> None:
     rng = synth.rng("activity", "campaign", scn)
-    stages = [templates[t] for t in CAMPAIGN_CHAIN if t in templates]
+    chain = rng.choice(CAMPAIGN_CHAINS)
+    stages = [templates[t] for t in chain if t in templates]
     parent: str | None = None
     src = _attacker_ip(world, rng)
     for i, tmpl in enumerate(stages):
