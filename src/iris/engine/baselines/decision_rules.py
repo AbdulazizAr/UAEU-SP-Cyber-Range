@@ -123,7 +123,14 @@ def _decide_episode(
         policy_version=BASELINE_POLICY_VERSION,
     )
     evidence = [a["event_id"] for a in ep_alerts] + [a["event_id"] for a in ep_eve]
-    malicious = bool(ep_alerts or ep_eve)
+    # Naive analyst-triage floor: flag on an alert of meaningful severity (Wazuh level >= 5) or any
+    # Suricata signature hit — not on level-3 informational noise (successful logins, service
+    # restarts), which fire in benign episodes too. This keeps the baseline beatable but
+    # non-degenerate: hard negatives (authorized scans, admin sudo, backup bursts) still raise
+    # false positives, and low-and-slow / insider attacks that never cross level 5 slip past it —
+    # exactly the gap the ML Engine must close.
+    high_alerts = [a for a in ep_alerts if int(a["raw"]["rule"]["level"]) >= 5]
+    malicious = bool(high_alerts or ep_eve)
 
     # ---- D1
     if malicious:

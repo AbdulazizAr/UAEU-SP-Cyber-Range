@@ -51,12 +51,19 @@ Fidelity is **unverified** until a one-time `wazuh-logtest` calibration (not in 
 | **Shortcut test (anti-fingerprint gate)** | **volume-invariant surface AUC ≈ 0.57** (mean over seed ranges; threshold ≤ 0.65) — a trivial model cannot tell attack from benign by how records are written |
 
 ### Baseline floor for the Engine to beat (visible-plane rules)
-- **D1** attack recall 0.91, benign false-positive rate 0.80 (hard negatives trip it), scenario-class accuracy 0.12.
-- **D2** under-prioritises hidden compromise (it cannot see it): exact-priority 0.02, 45 harmful under-prioritisations.
-- **D4** control precision 0.80, recall 0.40.
+The baseline is a naive analyst-triage rule: flag an episode on a Wazuh alert of level ≥ 5 or any
+Suricata signature hit (level-3 informational noise — successful logins, service restarts — is
+ignored, exactly as a tuned SOC would). Measured over 24 scenarios (medium noise):
+- **D1** attack recall 0.85, benign false-positive rate 0.67 (hard negatives and occasional 404s
+  trip it), scenario-class accuracy 0.23.
+- **D2** under-prioritises hidden compromise (it cannot see it): exact-priority 0.17, 21 harmful
+  under-prioritisations.
+- **D4** control precision 0.50, recall 0.58.
 
-These are intentionally weak: the ML Engine has clear room to beat them, and the high benign
-FP rate confirms the hard negatives are doing their job.
+These are intentionally weak but **non-degenerate** (the floor is beatable, not "always
+malicious"): the ML Engine has clear room to raise recall while cutting the 0.67 benign FP, lift
+scenario-class accuracy well above 0.23, and — most importantly — catch the hidden compromise D2
+misses. The high benign FP confirms the hard negatives are doing their job.
 
 ## Acceptance-criteria mapping
 
@@ -127,3 +134,10 @@ found and fixed two silent-attack gaps:
 Per-family detection after the fixes (40-scenario batch, share of malicious episodes with a
 Wazuh/Suricata alert): F1 0.80, F2 1.00, F4 1.00, F5 1.00, F6 1.00, F9 1.00; F3/F7 partial by
 control state; F8 (insider) surfaces through app/auth evidence, not IDS alerts, by design.
+
+A third issue surfaced from the per-episode alert levels: with benign browsing 404-ing too often
+and the rule baseline flagging on *any* alert (including level-3 login-success), the baseline
+degenerated to "always malicious" (recall 1.0 / FP 1.0 — no discrimination). Fixed by making
+legitimate browsing overwhelmingly 2xx/3xx (rare 404s) and raising the baseline trigger to
+Wazuh level ≥ 5 or a Suricata hit, so the floor is beatable and hard negatives — not routine
+logins — drive the false positives.

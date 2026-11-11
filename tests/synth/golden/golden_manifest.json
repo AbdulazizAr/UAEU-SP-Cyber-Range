@@ -3,17 +3,17 @@
     "master": 1,
     "noise": "low",
     "scenario_id": "scn-4c5be9070a02",
-    "visible_merkle": "7ffed591a215c299ac8fb6d34eea63b7184aaf98a6b4d3e274fb059e359a7482",
+    "visible_merkle": "22df17f7811dd42d8d1ec07f1ead3598481fea98d357273a95d7a3d40a028566",
     "n_malicious": 3,
-    "n_telemetry": 367
+    "n_telemetry": 366
   },
   {
     "master": 2,
     "noise": "medium",
     "scenario_id": "scn-8bdffccf872f",
-    "visible_merkle": "01ec0548c453ac413f1884156c973566f71d678d5033fac6436f3e886a91a3c1",
+    "visible_merkle": "446aae0f7b0f43721baedd0df58ba439be76f8e84ec2f5b34a047ddb3f270af4",
     "n_malicious": 3,
-    "n_telemetry": 568
+    "n_telemetry": 556
   },
   {
     "master": 3,
@@ -27,8 +27,8 @@
     "master": 8,
     "noise": "medium",
     "scenario_id": "scn-168e09ba2bbc",
-    "visible_merkle": "caacb059ea9b4b2d9a0a6c78ab641d393adaf0727e24023f2d28770b137ff764",
+    "visible_merkle": "b67c1d03fcba9a57dad00d8673a2635f3857e63e52c09764ff79cafb163dc162",
     "n_malicious": 4,
-    "n_telemetry": 310
+    "n_telemetry": 307
   }
 ]

@@ -34,7 +34,10 @@ def web_browsing(
     fps: list[Footprint] = []
     for ts in _times(start, end, rng.randint(6, 20), rng):
         url = rng.choice(urls)
-        status = rng.choices([200, 200, 200, 304, 404], weights=[6, 3, 3, 2, 1])[0]
+        # legitimate browsing is overwhelmingly 2xx/3xx; an occasional 404 (dead link) is normal
+        # background noise and realistically trips Wazuh rule 31101, but it should be rare so
+        # clean episodes are mostly quiet (not a flood of benign level-5 web alerts).
+        status = rng.choices([200, 200, 200, 304, 404], weights=[60, 20, 12, 7, 1])[0]
         ua = rng.choice(emitters.USER_AGENTS[:4])
         line = emitters.web_combined(
             ts, host, "nginx", src_ip, "GET", url, status, rng.randint(200, 9000), ua
